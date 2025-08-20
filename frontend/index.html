@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MyCodeAnalyser</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>MyCodeAnalyser</h1>
+      <p>Enter your GitHub Personal Access Token (PAT) to explore your data.</p>
+    </header>
+
+    <section class="controls">
+      <label for="token">GitHub PAT</label>
+      <input type="password" id="token" placeholder="ghp_..." />
+      <label for="baseUrl">API Base URL</label>
+      <input type="text" id="baseUrl" value="http://localhost:8000" />
+      <label for="repoFullName">Repo (owner/repo)</label>
+      <input type="text" id="repoFullName" placeholder="owner/repo" />
+      <button id="btnTimeframes">Fetch Timeframes</button>
+    </section>
+
+    <main>
+      <section>
+        <h2>User</h2>
+        <pre id="outUser"></pre>
+      </section>
+      <section>
+        <h2>Emails</h2>
+        <pre id="outEmails"></pre>
+      </section>
+      <section>
+        <h2>Organizations</h2>
+        <pre id="outOrgs"></pre>
+      </section>
+      <section>
+        <h2>Repositories</h2>
+        <div id="outRepos"></div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+  </html>
+
+

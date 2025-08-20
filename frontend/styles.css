@@ -1,0 +1,68 @@
+:root {
+  --bg: #0f172a;
+  --panel: #111827;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #22d3ee;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header { padding: 24px; border-bottom: 1px solid #1f2937; }
+h1 { margin: 0 0 8px; font-size: 22px; }
+header p { margin: 0; color: var(--muted); }
+
+.controls {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 10px 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid #1f2937;
+}
+.controls label { align-self: center; color: var(--muted); }
+.controls input { padding: 8px 10px; background: var(--panel); color: var(--text); border: 1px solid #374151; border-radius: 6px; }
+.controls button { grid-column: span 2; padding: 10px 14px; background: var(--accent); border: none; border-radius: 6px; color: #0c4a6e; font-weight: 600; cursor: pointer; }
+.controls button:hover { filter: brightness(1.05); }
+
+main { padding: 16px 24px 40px; display: grid; gap: 24px; }
+section h2 { margin: 0 0 8px; font-size: 18px; }
+#outRepos, pre {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid #374151;
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 60vh;
+}
+
+.branch-card {
+  border: 1px solid #374151;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+.branch-header {
+  padding: 10px 12px;
+  background: #0b1220;
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.badge { font-size: 12px; padding: 2px 6px; border: 1px solid #374151; border-radius: 999px; color: var(--muted); }
+.branch-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; }
+.panel { border: 1px solid #374151; border-radius: 8px; }
+.panel h3 { margin: 0; padding: 8px 10px; font-size: 14px; color: var(--muted); border-bottom: 1px solid #1f2937; }
+.panel pre { margin: 0; padding: 10px; max-height: 40vh; }
+
+.inline { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.inline input { width: 100px; }
+
+
