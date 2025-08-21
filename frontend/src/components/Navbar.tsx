@@ -1,16 +1,8 @@
 import { Shield, Moon, Sun, LogOut, User, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-// Dummy user data
-const dummyUser = {
-  firstName: "John",
-  lastName: "Doe",
-  email: "john.doe@example.com",
-  imageUrl: "",
-  fullName: "John Doe"
-};
+import { useUser, useClerk } from "@clerk/clerk-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,14 +20,17 @@ interface NavbarProps {
 
 export function Navbar({ isDarkMode, onToggleTheme }: NavbarProps) {
   const navigate = useNavigate();
-  const user = dummyUser;
-  const userEmail = user.email;
-  const userInitials = user.firstName[0] + user.lastName[0];
-  
-  const signOut = (callback: () => void) => {
-    // Handle sign out logic here
-    console.log('User signed out');
-    callback();
+  const { signOut } = useClerk();
+  const { user } = useUser();
+
+  if (!user) return null;
+
+  const userEmail = user.primaryEmailAddress?.emailAddress || '';
+  const userFullName = user.fullName || 'User';
+  const userInitials = userFullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+  const handleSignOut = () => {
+    signOut(() => navigate('/'));
   };
 
   return (
@@ -69,22 +64,18 @@ export function Navbar({ isDarkMode, onToggleTheme }: NavbarProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-8 w-8 rounded-full">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={user?.imageUrl} alt={userEmail} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">
-                  {userInitials}
-                </AvatarFallback>
+                {user.imageUrl ? (
+                  <AvatarImage src={user.imageUrl} alt={userFullName} />
+                ) : (
+                  <AvatarFallback>{userInitials}</AvatarFallback>
+                )}
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-sm font-medium leading-none">
-                    {user?.fullName || 'User'}
-                  </p>
-                </div>
+                <p className="text-sm font-medium leading-none">{userFullName}</p>
                 <p className="text-xs leading-none text-muted-foreground">
                   {userEmail}
                 </p>
@@ -98,7 +89,7 @@ export function Navbar({ isDarkMode, onToggleTheme }: NavbarProps) {
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut(() => navigate('/'))}>
+            <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
               <span>Sign out</span>
             </DropdownMenuItem>
