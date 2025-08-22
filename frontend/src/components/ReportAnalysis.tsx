@@ -173,6 +173,59 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
     setSelectedBranches([]);
   };
 
+  // const handleAnalyze = async () => {
+  //   if (!repositoryOwner.trim() || !repositoryName.trim() || !personalToken.trim()) {
+  //     toast({
+  //       variant: "destructive",
+  //       title: "Error",
+  //       description: "Please fill in all required fields (Repository Owner, Repository Name, and Personal Access Token)",
+  //     });
+  //     return;
+  //   }
+
+  //   setIsAnalyzing(true);
+  //   setError(null);
+    
+  //   try {
+  //     const response = await fetch(`${API_URL}/repos/${repositoryOwner}/${repositoryName}/insights`, {
+  //       headers: {
+  //         'X-GitHub-Token': personalToken,
+  //         'Accept': 'application/json',
+  //         'Content-Type': 'application/json'
+  //       }
+  //     });
+
+  //     if (!response.ok) {
+  //       const errorData = await response.json().catch(() => ({}));
+  //       throw new Error(errorData.detail || 'Failed to analyze repository');
+  //     }
+
+  //     const data = await response.json();
+  //     // Include the token in the response data
+  //     const insightsWithToken = {
+  //       ...data,
+  //       token: personalToken
+  //     };
+  //     onAnalysisComplete(insightsWithToken);
+      
+  //     toast({
+  //       title: "Analysis Complete",
+  //       description: "Repository analysis was successful",
+  //     });
+      
+  //   } catch (err) {
+  //     const errorMessage = err instanceof Error ? err.message : 'Failed to analyze repository';
+  //     setError(errorMessage);
+  //     toast({
+  //       variant: "destructive",
+  //       title: "Error",
+  //       description: errorMessage,
+  //     });
+  //   } finally {
+  //     setIsAnalyzing(false);
+  //   }
+  // };
+
   const handleAnalyze = async () => {
     if (!repositoryOwner.trim() || !repositoryName.trim() || !personalToken.trim()) {
       toast({
@@ -182,30 +235,43 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
       });
       return;
     }
-
+  
     setIsAnalyzing(true);
     setError(null);
     
     try {
-      const response = await fetch(`${API_URL}/repos/${repositoryOwner}/${repositoryName}/insights`, {
+      let url = `${API_URL}/repos/${repositoryOwner}/${repositoryName}`;
+      
+      // If branches are selected, use the selected-branches endpoint
+      if (selectedBranches.length > 0) {
+        const branchesParam = selectedBranches.join(',');
+        url += `/insights/selected-branches?branches=${encodeURIComponent(branchesParam)}`;
+      } else {
+        // Otherwise, use the default insights endpoint
+        url += '/insights';
+      }
+  
+      const response = await fetch(url, {
         headers: {
           'X-GitHub-Token': personalToken,
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         }
       });
-
+  
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.detail || 'Failed to analyze repository');
       }
-
+  
       const data = await response.json();
+      
       // Include the token in the response data
       const insightsWithToken = {
         ...data,
         token: personalToken
       };
+      
       onAnalysisComplete(insightsWithToken);
       
       toast({

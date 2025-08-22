@@ -214,6 +214,7 @@ def get_user_metadata(user_id: str):
         print(f"Error in get_user_metadata: {error_detail}")
         raise HTTPException(status_code=500, detail=error_detail)
 
+
 def resolve_token(x_github_token: Optional[str], token_query: Optional[str]) -> str:
     token = x_github_token or token_query or os.environ.get("GITHUB_TOKEN")
     if not token:
@@ -665,36 +666,186 @@ async def get_repo_insights(
             detail=f"Error fetching repo insights: {str(e)}"
         )
 
+@app.get("/repos/{owner}/{repo}/insights/selected-branches")
+async def get_selected_branches_insights(
+    owner: str,
+    repo: str,
+    branches: str = Query(..., description="Comma-separated list of branch names"),
+    x_github_token: Optional[str] = Header(default=None),
+    token: Optional[str] = Query(default=None),
+):
+    """
+    Repo insights for selected branches (same format as /insights):
+    - total_unique_commits
+    - per_branch: {branch: commit_count}
+    - by_developer: [{username, commits}]
+    - per_branch_per_developer: {branch: {username: commit_count}}
+    - author_metrics: detailed breakdown per developer
+    - total_developers, total_branches, latest_activity_date
+    - latest_commit: dict (most recent commit across selected branches)
+    - recent_commits: list of top 5 commits
+    """
+    pat = resolve_token(x_github_token, token)
+    branch_list = [b.strip() for b in branches.split(',') if b.strip()]
+
+    if not branch_list:
+        raise HTTPException(status_code=400, detail="At least one branch must be specified")
+
+    try:
+        # Verify branches exist
+        all_branches = github_client.fetch_all_branches(pat, owner, repo)
+        if all_branches is None:
+            raise HTTPException(status_code=500, detail="Failed to fetch branches from GitHub")
+
+        valid_branches = [b for b in branch_list if any(b == br.get("name") for br in all_branches)]
+        if not valid_branches:
+            raise HTTPException(status_code=404, detail="None of the specified branches exist in the repository")
+
+        seen_shas: Set[str] = set()
+        all_commits: List[Dict[str, Any]] = []
+        per_branch_counts: Dict[str, int] = {}
+        per_branch_per_developer: Dict[str, Dict[str, int]] = {}
+        by_developer_counts: Dict[str, int] = {}
+        author_metrics: Dict[str, Dict[str, Any]] = {}
+        latest_activity_date: Optional[str] = None
+
+        # Collect commits
+        for branch in valid_branches:
+            commits = github_client.fetch_all_commits_for_branch(pat, owner, repo, branch)
+            if not commits:
+                continue
+
+            branch_count = 0
+            per_branch_per_developer[branch] = {}
+
+            for c in commits:
+                if not isinstance(c, dict) or "sha" not in c:
+                    continue
+                sha = c["sha"]
+                if sha in seen_shas:
+                    continue
+
+                seen_shas.add(sha)
+                all_commits.append(c)
+                branch_count += 1
+
+                # Developer tracking
+                author = c.get("author_login") or c.get("committer_login") or c.get("author_name") or "unknown"
+                by_developer_counts[author] = by_developer_counts.get(author, 0) + 1
+                per_branch_per_developer[branch][author] = per_branch_per_developer[branch].get(author, 0) + 1
+
+                # Track author metrics
+                if author not in author_metrics:
+                    author_metrics[author] = {
+                        "total_commits": 0,
+                        "lines_added": 0,
+                        "lines_removed": 0,
+                        "files_changed": set(),
+                        "commits": [],
+                        "branches": set()
+                    }
+
+                metrics = author_metrics[author]
+                metrics["total_commits"] += 1
+                metrics["lines_added"] += c.get("additions", 0)
+                metrics["lines_removed"] += c.get("deletions", 0)
+                metrics["branches"].add(branch)
+                for f in c.get("files", []) or []:
+                    metrics["files_changed"].add(f.get("filename"))
+                metrics["commits"].append(c)
+
+                # Update latest activity
+                commit_date = c.get("date")
+                if commit_date and (not latest_activity_date or commit_date > latest_activity_date):
+                    latest_activity_date = commit_date
+
+            per_branch_counts[branch] = branch_count
+
+        # Build by_developer list
+        by_developer = [
+            {"username": author, "commits": count}
+            for author, count in by_developer_counts.items()
+        ]
+        by_developer.sort(key=lambda x: x["commits"], reverse=True)
+
+        # Format author metrics
+        formatted_author_metrics = {}
+        for author, metrics in author_metrics.items():
+            total_commits = metrics["total_commits"]
+            good_quality = sum(1 for c in metrics["commits"] if "fix" in (c.get("message") or "").lower())
+            low_risk = sum(1 for c in metrics["commits"]
+                           if (c.get("deletions") or 0) < 50 and (c.get("additions") or 0) < 200)
+            simple_commits = sum(1 for c in metrics["commits"] if len(c.get("files") or []) <= 3)
+
+            author_commits = []
+            for commit in metrics["commits"]:
+                commit_data = {
+                    "sha": commit.get("sha"),
+                    "message": commit.get("message"),
+                    "date": commit.get("date"),
+                    "additions": commit.get("additions", 0),
+                    "deletions": commit.get("deletions", 0),
+                    "files": [{
+                        "filename": f.get("filename"),
+                        "status": f.get("status"),
+                        "additions": f.get("additions", 0),
+                        "deletions": f.get("deletions", 0),
+                        "changes": f.get("changes", 0)
+                    } for f in commit.get("files", [])],
+                    "branches": list(metrics["branches"])
+                }
+                author_commits.append(commit_data)
+
+            formatted_author_metrics[author] = {
+                "total_commits": total_commits,
+                "lines_added": metrics["lines_added"],
+                "lines_removed": metrics["lines_removed"],
+                "files_changed": len(metrics["files_changed"]),
+                "quality_metrics": {
+                    "quality_score": round((good_quality / total_commits) * 100, 2) if total_commits else 0,
+                    "good_commits": good_quality,
+                    "low_risk_score": round((low_risk / total_commits) * 100, 2) if total_commits else 0,
+                    "low_risk_commits": low_risk,
+                    "simple_score": round((simple_commits / total_commits) * 100, 2) if total_commits else 0,
+                    "simple_commits": simple_commits
+                },
+                "branches": list(metrics["branches"]),
+                "commits": author_commits
+            }
+
+        # Sort commits for recents & latest
+        all_sorted = sorted(all_commits, key=lambda c: c.get("date", ""), reverse=True)
+        recent_commits = all_sorted[:5]
+        latest_commit = all_sorted[0] if all_sorted else None
+
+        return {
+            "owner": owner,
+            "repo": repo,
+            "total_unique_commits": len(all_commits),
+            "total_branches": len(valid_branches),
+            "total_developers": len(author_metrics),
+            "latest_activity_date": latest_activity_date,
+            "latest_commit": latest_commit,
+            "recent_commits": recent_commits,
+            "per_branch": per_branch_counts,
+            "by_developer": by_developer,
+            "per_branch_per_developer": per_branch_per_developer,
+            "author_metrics": formatted_author_metrics,
+            "code_quality_metrics": get_code_quality_metrics(
+                pat,
+                owner,
+                repo,
+                all_commits
+            )
+        }
+
+    except Exception as e:
+        error_detail = str(e)
+        if hasattr(e, "response") and e.response is not None:
+            error_detail = e.response.text
+        raise HTTPException(status_code=500, detail=f"Error fetching repository insights: {error_detail}")
 
 
-
-# @app.get("/repos/{owner}/{repo}/commits/latest")
-# async def get_latest_commit(
-#     owner: str,
-#     repo: str,
-#     x_github_token: Optional[str] = Header(default=None),
-#     token: Optional[str] = Query(default=None),
-# ):
-#     """
-#     Get the most recent commit across all branches in a repository.
-    
-#     Returns the commit details including author, message, and file changes.
-#     """
-#     pat = resolve_token(x_github_token, token)
-    
-#     try:
-#         commit = github_client.fetch_latest_commit(pat, owner, repo)
-#         if not commit:
-#             raise HTTPException(
-#                 status_code=404,
-#                 detail="No commits found or repository not accessible"
-#             )
-#         return commit
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=500,
-#             detail=f"Error fetching latest commit: {str(e)}"
-#         )
 
 @app.get("/repos/{owner}/{repo}/commits/author/{author}")
 async def get_commits_by_author(
