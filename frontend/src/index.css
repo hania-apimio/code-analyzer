@@ -1,0 +1,147 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@layer base {
+  :root {
+    /* Base colors */
+    --background: 0 0% 100%;
+    --foreground: 152 25% 15%;
+
+    /* Card system */
+    --card: 0 0% 100%;
+    --card-foreground: 152 25% 15%;
+
+    /* Popover system */
+    --popover: 0 0% 100%;
+    --popover-foreground: 152 25% 15%;
+
+    /* Primary - Deep Forest Green */
+    --primary: 152 60% 20%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 152 45% 35%;
+
+    /* Secondary - Sage Green */
+    --secondary: 152 30% 85%;
+    --secondary-foreground: 152 25% 15%;
+
+    /* Muted system */
+    --muted: 152 15% 95%;
+    --muted-foreground: 152 10% 45%;
+
+    /* Accent - Medium Green */
+    --accent: 152 40% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders and inputs */
+    --border: 152 20% 88%;
+    --input: 152 20% 88%;
+    --ring: 152 60% 20%;
+
+    /* Success colors */
+    --success: 152 80% 30%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning colors */
+    --warning: 45 90% 55%;
+    --warning-foreground: 45 15% 15%;
+
+    /* Info colors */
+    --info: 200 95% 45%;
+    --info-foreground: 0 0% 100%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(152 60% 20%), hsl(152 45% 35%));
+    --gradient-subtle: linear-gradient(180deg, hsl(152 15% 98%), hsl(152 10% 95%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(152 8% 97%));
+
+    /* Shadows */
+    --shadow-elegant: 0 4px 20px -4px hsl(152 60% 20% / 0.15);
+    --shadow-glow: 0 0 30px hsl(152 45% 35% / 0.2);
+    --shadow-card: 0 2px 10px -2px hsl(152 20% 20% / 0.08);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    /* Dark theme with green accents */
+    --background: 152 25% 8%;
+    --foreground: 0 0% 95%;
+
+    --card: 152 20% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 152 20% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    /* Primary - Bright Green for dark mode */
+    --primary: 152 70% 45%;
+    --primary-foreground: 0 0% 15%;
+    --primary-glow: 152 60% 55%;
+
+    /* Secondary - Dark green */
+    --secondary: 152 30% 15%;
+    --secondary-foreground: 0 0% 95%;
+
+    /* Muted system for dark */
+    --muted: 152 20% 15%;
+    --muted-foreground: 152 15% 70%;
+
+    /* Accent - Medium bright green */
+    --accent: 152 50% 35%;
+    --accent-foreground: 0 0% 95%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 95%;
+
+    --border: 152 20% 20%;
+    --input: 152 20% 20%;
+    --ring: 152 70% 45%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
