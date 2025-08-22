@@ -1,7 +1,13 @@
 import os
 from typing import Optional, List, Dict, Any
+from dotenv import load_dotenv
+import requests
+from pydantic import BaseModel
 
-from fastapi import FastAPI, Header, HTTPException, Query
+# Load environment variables from .env file
+load_dotenv()
+
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -9,18 +15,204 @@ from datetime import datetime, timedelta, timezone
 
 from . import github_client
 from .github_client import get_code_quality_metrics
-
+from stripe_api import router as stripe_router
 
 app = FastAPI(title="MyCodeAnalyser API", version="0.1.0")
 
+# Include routers
+app.include_router(stripe_router, prefix="/api")
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
+# Get environment variables
+CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
+if not CLERK_SECRET_KEY:
+    raise RuntimeError("CLERK_SECRET_KEY environment variable not set!")
+
+CLERK_API_BASE = os.getenv("CLERK_API_BASE", "https://api.clerk.com/v1")
+
+# Serve frontend
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+class UpdateUserRequest(BaseModel):
+    user_id: str
+    plan: str
+    stripe_customer_id:str
+    subscription_status:str
+
+class UpdatePlanRequest(BaseModel):
+    user_id: str
+    plan: str
+
+class UpdateStripeRequest(BaseModel):
+    user_id: str
+    stripe_customer_id: str
+
+class EnsureMetadataRequest(BaseModel):
+    user_id: str
+    default_plan: str = "Free"
+    stripe_customer_id: str = None
+
+@app.put("/update-user")
+def update_user(data: UpdateUserRequest):
+    headers = {
+        "Authorization": f"Bearer {CLERK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "public_metadata": {
+            "plan": data.plan
+        },
+        "private_metadata": {
+            "stripe_customer_id": data.stripe_customer_id,
+            "subscription_status": data.subscription_status
+        }
+    }
+    url = f"{CLERK_API_BASE}/users/{data.user_id}/metadata"
+    resp = requests.patch(url, headers=headers, json=payload)
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {"success": True, "plan": data.plan, "stripe_customer_id":  data.stripe_customer_id, "subscription_status": data.subscription_status}
+
+
+@app.put("/update-plan")
+def update_plan(data: UpdatePlanRequest):
+    headers = {
+        "Authorization": f"Bearer {CLERK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "public_metadata": {
+            "plan": data.plan
+        }
+    }
+    url = f"{CLERK_API_BASE}/users/{data.user_id}/metadata"
+    resp = requests.patch(url, headers=headers, json=payload)
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {"success": True, "plan": data.plan}
+
+@app.put("/update-stripe-customer")
+def update_plan(data: UpdateStripeRequest):
+    headers = {
+        "Authorization": f"Bearer {CLERK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "private_metadata": {
+            "stripe_customer_id": data.stripe_customer_id
+        }
+    }
+    url = f"{CLERK_API_BASE}/users/{data.user_id}/metadata"
+    resp = requests.patch(url, headers=headers, json=payload)
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {"success": True, "stripe_customer_id": data.stripe_customer_id}
+
+@app.post("/ensure-metadata")
+def ensure_metadata(data: EnsureMetadataRequest):
+    headers = {
+        "Authorization": f"Bearer {CLERK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+    user_url = f"{CLERK_API_BASE}/users/{data.user_id}"
+    
+    # Get current user data
+    user_resp = requests.get(user_url, headers=headers)
+    if user_resp.status_code >= 400:
+        raise HTTPException(status_code=user_resp.status_code, detail=user_resp.text)
+        
+    user = user_resp.json()
+    public_metadata = user.get("public_metadata", {}) or {}
+    private_metadata = user.get("private_metadata", {}) or {}
+    needs_update = False
+    
+    # Update public metadata
+    new_public_metadata = dict(public_metadata)
+    if not new_public_metadata.get("plan"):
+        new_public_metadata["plan"] = data.default_plan
+        needs_update = True
+    
+    # Update private metadata with Stripe customer ID if provided
+    new_private_metadata = dict(private_metadata)
+    if data.stripe_customer_id and new_private_metadata.get("stripe_customer_id") != data.stripe_customer_id:
+        new_private_metadata["stripe_customer_id"] = data.stripe_customer_id
+        needs_update = True
+    
+    # If no Stripe customer ID exists, initialize it as None
+    if "stripe_customer_id" not in new_private_metadata:
+        new_private_metadata["stripe_customer_id"] = None
+        needs_update = True
+    
+    if needs_update:
+        patch_url = f"{CLERK_API_BASE}/users/{data.user_id}/metadata"
+        patch_payload = {}
+        
+        # Only include the fields that need updating
+        if new_public_metadata != public_metadata:
+            patch_payload["public_metadata"] = new_public_metadata
+        if new_private_metadata != private_metadata:
+            patch_payload["private_metadata"] = new_private_metadata
+            
+        patch_resp = requests.patch(patch_url, headers=headers, json=patch_payload)
+        if patch_resp.status_code >= 400:
+            raise HTTPException(status_code=patch_resp.status_code, detail=patch_resp.text)
+    
+    return {
+        "success": True, 
+        "public_metadata": new_public_metadata,
+        "private_metadata": new_private_metadata
+    }
+
+@app.get("/get-user-metadata/{user_id}")
+def get_user_metadata(user_id: str):
+    """Get both public and private metadata for a user"""
+    headers = {
+        "Authorization": f"Bearer {CLERK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    try:
+        # Add ?expand[]=public_metadata&expand[]=private_metadata to the URL
+        user_url = f"{CLERK_API_BASE}/users/{user_id}?expand[]=public_metadata&expand[]=private_metadata"
+        print(f"Fetching user metadata from: {user_url}")
+        
+        user_resp = requests.get(user_url, headers=headers)
+        user_resp.raise_for_status()
+        user_data = user_resp.json()
+                
+        # The metadata might be nested under the expanded fields
+        public_metadata = user_data.get("public_metadata", {}) or {}
+        private_metadata = user_data.get("private_metadata", {}) or {}
+        
+        # If metadata is empty, try the expanded format
+        if not public_metadata and "public_metadata" in user_data:
+            public_metadata = user_data["public_metadata"] or {}
+        if not private_metadata and "private_metadata" in user_data:
+            private_metadata = user_data["private_metadata"] or {}
+        
+        print(f"Extracted metadata - Public: {public_metadata}, Private: {private_metadata}")
+            
+        return {
+            "success": True,
+            "public_metadata": public_metadata,
+            "private_metadata": private_metadata
+        }
+    except Exception as e:
+        error_detail = str(e)
+        if hasattr(e, 'response') and e.response is not None:
+            error_detail = e.response.text
+        print(f"Error in get_user_metadata: {error_detail}")
+        raise HTTPException(status_code=500, detail=error_detail)
 
 def resolve_token(x_github_token: Optional[str], token_query: Optional[str]) -> str:
     token = x_github_token or token_query or os.environ.get("GITHUB_TOKEN")
@@ -33,7 +225,6 @@ def resolve_token(x_github_token: Optional[str], token_query: Optional[str]) -> 
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
-
 
 @app.get("/")
 def root_page():
