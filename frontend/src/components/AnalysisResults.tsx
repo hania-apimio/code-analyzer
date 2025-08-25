@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -141,6 +141,14 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
   const [authorCommitsError, setAuthorCommitsError] = useState<string | null>(null);
   const [personalToken, setPersonalToken] = useState("");
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to results when component mounts
+  useEffect(() => {
+    if (resultsRef.current) {
+      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
 
   const getAssessmentColor = (assessment: string) => {
     switch (assessment.toLowerCase()) {
@@ -333,7 +341,7 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
   }, [availableAuthors, selectedAuthor]);
 
   return (
-    <div className="space-y-6">
+    <div ref={resultsRef} className="space-y-6">
       {/* Header with Download Button */}
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-black dark:text-white">Analysis Results</h2>

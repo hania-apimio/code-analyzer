@@ -11,6 +11,8 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/use-toast";
+import { Search } from "lucide-react";
+import { CommitAnalysisModal } from "./CommitAnalysisModal";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -107,8 +109,9 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-  
+  const [commitSha, setCommitSha] = useState("");
+  const [isAnalyzingCommit, setIsAnalyzingCommit] = useState(false);
+  const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
 
   const handleFetchBranches = async () => {
     if (!repositoryOwner.trim() || !repositoryName.trim() || !personalToken.trim()) {
@@ -172,59 +175,6 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
   const handleClearAll = () => {
     setSelectedBranches([]);
   };
-
-  // const handleAnalyze = async () => {
-  //   if (!repositoryOwner.trim() || !repositoryName.trim() || !personalToken.trim()) {
-  //     toast({
-  //       variant: "destructive",
-  //       title: "Error",
-  //       description: "Please fill in all required fields (Repository Owner, Repository Name, and Personal Access Token)",
-  //     });
-  //     return;
-  //   }
-
-  //   setIsAnalyzing(true);
-  //   setError(null);
-    
-  //   try {
-  //     const response = await fetch(`${API_URL}/repos/${repositoryOwner}/${repositoryName}/insights`, {
-  //       headers: {
-  //         'X-GitHub-Token': personalToken,
-  //         'Accept': 'application/json',
-  //         'Content-Type': 'application/json'
-  //       }
-  //     });
-
-  //     if (!response.ok) {
-  //       const errorData = await response.json().catch(() => ({}));
-  //       throw new Error(errorData.detail || 'Failed to analyze repository');
-  //     }
-
-  //     const data = await response.json();
-  //     // Include the token in the response data
-  //     const insightsWithToken = {
-  //       ...data,
-  //       token: personalToken
-  //     };
-  //     onAnalysisComplete(insightsWithToken);
-      
-  //     toast({
-  //       title: "Analysis Complete",
-  //       description: "Repository analysis was successful",
-  //     });
-      
-  //   } catch (err) {
-  //     const errorMessage = err instanceof Error ? err.message : 'Failed to analyze repository';
-  //     setError(errorMessage);
-  //     toast({
-  //       variant: "destructive",
-  //       title: "Error",
-  //       description: errorMessage,
-  //     });
-  //   } finally {
-  //     setIsAnalyzing(false);
-  //   }
-  // };
 
   const handleAnalyze = async () => {
     if (!repositoryOwner.trim() || !repositoryName.trim() || !personalToken.trim()) {
@@ -290,6 +240,19 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleAnalyzeCommit = () => {
+    if (!commitSha.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please enter a commit hash to analyze",
+      });
+      return;
+    }
+    setIsAnalyzingCommit(true);
+    setIsCommitModalOpen(true);
   };
 
   const analyzeButtonText = `Analyze Github Repository${selectedBranches.length > 0 ? ` (${selectedBranches.length} branch${selectedBranches.length === 1 ? '' : 'es'})` : ''}`;
@@ -425,6 +388,41 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
                 </PopoverContent>
               </Popover>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Commit Analysis */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Analyze Specific Commit</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center space-x-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Enter commit hash..."
+                className="pl-9"
+                value={commitSha}
+                onChange={(e) => setCommitSha(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeCommit()}
+              />
+            </div>
+            <Button 
+              onClick={handleAnalyzeCommit}
+              disabled={!commitSha.trim() || isAnalyzingCommit}
+            >
+              {isAnalyzingCommit ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                'Analyze Commit'
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -590,6 +588,20 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
         )}
       </Button>
       </div>
+
+      {repositoryOwner && repositoryName && (
+        <CommitAnalysisModal
+          isOpen={isCommitModalOpen}
+          onClose={() => {
+            setIsCommitModalOpen(false);
+            setIsAnalyzingCommit(false);
+          }}
+          owner={repositoryOwner}
+          repo={repositoryName}
+          commitSha={commitSha}
+          token={personalToken}
+        />
+      )}
     </div>
   );
 }

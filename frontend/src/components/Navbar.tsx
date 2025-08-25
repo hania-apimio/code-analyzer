@@ -27,10 +27,10 @@ export function Navbar({ isDarkMode, onToggleTheme }: NavbarProps) {
   const userEmail = user.primaryEmailAddress?.emailAddress || '';
   const userFullName = user.fullName || 'User';
   const userInitials = userFullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  const plan = (user?.publicMetadata?.plan as string) || "Free";
+  //const plan = (user?.publicMetadata?.plan as string) || "Free";
 
   const user_id = user?.id;
-  console.log("UserID: ", user_id, "Plan: ", plan);
+  //console.log("UserID: ", user_id, "Plan: ", plan);
   const handleSignOut = () => {
     signOut(() => navigate('/'));
   };
@@ -50,7 +50,7 @@ export function Navbar({ isDarkMode, onToggleTheme }: NavbarProps) {
       <div className="flex items-center gap-4">
 
         {/* Theme Toggle */}
-        <Button
+        {/* <Button
           variant="outline"
           size="sm"
           onClick={onToggleTheme}
@@ -61,7 +61,7 @@ export function Navbar({ isDarkMode, onToggleTheme }: NavbarProps) {
           ) : (
             <Moon className="w-4 h-4 group-hover:text-foreground" />
           )}
-        </Button>
+        </Button> */}
 
         {/* User Dropdown */}
         <DropdownMenu>
@@ -82,7 +82,7 @@ export function Navbar({ isDarkMode, onToggleTheme }: NavbarProps) {
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium leading-none">{userFullName}</p>
               <span className="inline-flex items-center rounded-full bg-green-600 px-2 py-0.5 text-xs font-medium text-white">
-                {plan}
+              {(user?.publicMetadata?.plan as string) || "free"}
               </span>
             </div>
             <p className="text-xs leading-none text-muted-foreground">

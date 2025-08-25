@@ -795,3 +795,46 @@ def get_code_quality_metrics(token: str, owner: str, repo: str, commits: List[Di
         'security_warnings': {'value': 0, 'assessment': 'excellent'},
     }
     return metrics
+
+def fetch_commit(token: str, owner: str, repo: str, sha: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch detailed information about a specific commit.
+    
+    Args:
+        token: GitHub personal access token
+        owner: Repository owner
+        repo: Repository name
+        sha: Commit SHA
+        
+    Returns:
+        Dict containing commit details or None if not found
+    """
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    try:
+        # Get commit details
+        url = f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}"
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        # Get commit status (for CI/CD status)
+        status_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}/status"
+        status_response = requests.get(status_url, headers=headers, timeout=10)
+        
+        commit_data = response.json()
+        
+        if status_response.status_code == 200:
+            commit_data['status'] = status_response.json()
+            
+        return commit_data
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching commit {sha}: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            if e.response.status_code == 404:
+                return None
+            print(f"GitHub API error: {e.response.text}")
+        return None

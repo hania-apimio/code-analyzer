@@ -945,3 +945,78 @@ async def get_commits_by_author(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching commits by author: {str(e)}")
+@app.get("/repos/{owner}/{repo}/commits/{sha}")
+async def get_commit_details(
+    owner: str,
+    repo: str,
+    sha: str,
+    x_github_token: Optional[str] = Header(None),
+    token: Optional[str] = Query(default=None),
+):
+    """
+    Get detailed information about a specific commit.
+    
+    Parameters:
+    - owner: Repository owner
+    - repo: Repository name
+    - sha: Commit SHA
+    - x_github_token: GitHub token from header (optional)
+    - token: GitHub token from query parameter (optional)
+    
+    Returns:
+    - JSON response with commit details or error message
+    """
+    pat = resolve_token(x_github_token, token)
+    
+    try:
+        # Verify the commit exists and get its details
+        commit = github_client.fetch_commit(pat, owner, repo, sha)
+        if not commit:
+            raise HTTPException(status_code=404, detail="Commit not found")
+            
+        # Format the response
+        return {
+            "sha": commit.get("sha"),
+            "message": commit.get("commit", {}).get("message", ""),
+            "author": {
+                "name": commit.get("commit", {}).get("author", {}).get("name"),
+                "email": commit.get("commit", {}).get("author", {}).get("email"),
+                "login": commit.get("author", {}).get("login"),
+                "avatar_url": commit.get("author", {}).get("avatar_url")
+            },
+            "committer": {
+                "name": commit.get("commit", {}).get("committer", {}).get("name"),
+                "email": commit.get("commit", {}).get("committer", {}).get("email"),
+                "login": commit.get("committer", {}).get("login"),
+                "avatar_url": commit.get("committer", {}).get("avatar_url")
+            },
+            "date": commit.get("commit", {}).get("author", {}).get("date"),
+            "stats": {
+                "total": commit.get("stats", {}).get("total", 0),
+                "additions": commit.get("stats", {}).get("additions", 0),
+                "deletions": commit.get("stats", {}).get("deletions", 0)
+            },
+            "files": [
+                {
+                    "filename": file.get("filename"),
+                    "status": file.get("status"),
+                    "additions": file.get("additions", 0),
+                    "deletions": file.get("deletions", 0),
+                    "changes": file.get("changes", 0),
+                    "patch": file.get("patch", "")[:1000]  # Limit patch size
+                }
+                for file in commit.get("files", [])
+            ],
+            "parents": [p.get("sha") for p in commit.get("parents", [])],
+            "verification": commit.get("verification", {}),
+            "status": commit.get("status", {})
+        }
+        
+    except Exception as e:
+        error_detail = str(e)
+        if hasattr(e, 'response') and e.response is not None:
+            error_detail = e.response.text
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching commit details: {error_detail}"
+        )
