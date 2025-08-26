@@ -8,6 +8,282 @@ import { Download, Users, GitCommit, GitBranch, CalendarClock, TrendingUp, Trend
 
 const API_URL = import.meta.env.VITE_API_URL;
 
+// Helper functions for commit analysis
+const getCommitType = (message: string): string => {
+  const messageLower = message.toLowerCase();
+  if (messageLower.includes('fix') || messageLower.includes('bug')) return 'Bug Fix';
+  if (messageLower.includes('feat') || messageLower.includes('add')) return 'Feature';
+  if (messageLower.includes('refactor')) return 'Refactor';
+  if (messageLower.includes('doc')) return 'Documentation';
+  if (messageLower.includes('test')) return 'Test';
+  if (messageLower.includes('chore')) return 'Chore';
+  return 'Other';
+};
+
+const getComplexityLevel = (totalChanges: number): string => {
+  if (totalChanges < 10) return 'Simple';
+  if (totalChanges < 50) return 'Moderate';
+  if (totalChanges < 200) return 'Complex';
+  return 'Very Complex';
+};
+
+const getQualityAssessment = (added: number, removed: number, filesChanged: number): string => {
+  const changeRatio = added > 0 ? removed / added : 0;
+  if (filesChanged === 0) return 'N/A';
+  if (filesChanged > 10) return 'Needs Review';
+  if (changeRatio > 3) return 'Questionable';
+  return 'Good';
+};
+
+const getRiskLevel = (totalChanges: number, filesChanged: number): string => {
+  if (filesChanged === 0) return 'None';
+  if (totalChanges > 100 || filesChanged > 5) return 'High';
+  if (totalChanges > 50 || filesChanged > 2) return 'Medium';
+  return 'Low';
+};
+
+const getCommitAnalysisText = (commitData: any, latestCommit: any, selectedAuthor: string) => {
+  const author = commitData.author_name || commitData.author_login || selectedAuthor;
+  const message = commitData.message;
+  const changes = commitData.linesAdded + commitData.linesRemoved;
+  const filesChanged = commitData.filesChanged;
+  
+  let analysis = `${author} made a ${getCommitType(message).toLowerCase()} commit: "${message}". `;
+  analysis += `This commit modified ${changes} lines (${commitData.linesAdded} added, ${commitData.linesRemoved} removed) across ${filesChanged} ${filesChanged === 1 ? 'file' : 'files'}. `;
+  
+  if (changes > 200) {
+    analysis += "This is a very large change that significantly impacts the codebase. ";
+  } else if (changes > 50) {
+    analysis += "This is a substantial change that affects multiple parts of the application. ";
+  } else if (changes > 10) {
+    analysis += "This change makes focused modifications to specific functionality. ";
+  } else {
+    analysis += "This is a small, targeted change. ";
+  }
+
+  if (filesChanged > 5) {
+    analysis += "The changes span multiple files, which may require careful review. ";
+  }
+
+  const changeRatio = commitData.linesAdded > 0 ? commitData.linesRemoved / commitData.linesAdded : 0;
+  if (changeRatio > 1.5) {
+    analysis += "The commit includes significant code removal relative to additions, which could indicate refactoring or cleanup. ";
+  }
+
+  return analysis;
+};
+
+// SSM Category Constants
+const SSM_CATEGORIES = {
+  INTEGRATION: 'Integration',
+  ROLLBACK: 'Rollback',
+  ARCHITECTURAL: 'Architectural',
+  FEATURE: 'Feature',
+  BUG_FIX: 'Bug Fix',
+  REFACTORING: 'Refactoring',
+  DOCUMENTATION: 'Documentation',
+  TEST: 'Test',
+  CONFIGURATION: 'Configuration',
+  MAINTENANCE: 'Maintenance',
+  TRIVIAL: 'Trivial'
+} as const;
+
+type SSMCategory = typeof SSM_CATEGORIES[keyof typeof SSM_CATEGORIES];
+
+// Helper function to check message patterns with fuzzy matching
+const hasPattern = (message: string, patterns: (string | RegExp)[]): boolean => {
+  const msg = message.toLowerCase().replace(/[^\w\s]/g, ' '); // Remove special chars
+  const words = msg.split(/\s+/); // Split into words
+  
+  return patterns.some(pattern => {
+    if (pattern instanceof RegExp) {
+      return pattern.test(msg);
+    }
+    
+    const patternWords = pattern.toLowerCase().split(/\s+/);
+    return patternWords.every(pw => 
+      words.some(w => w.includes(pw) || pw.includes(w))
+    );
+  });
+};
+
+const determineSSMCategory = (commit: {
+  message?: string;
+  linesAdded?: number;
+  linesRemoved?: number;
+  filesChanged?: number;
+}): SSMCategory => {
+  const message = commit.message || '';
+  const totalChanges = (commit.linesAdded || 0) + (commit.linesRemoved || 0);
+  const filesChanged = commit.filesChanged || 0;
+  const isLargeChange = totalChanges > 100 && filesChanged > 5;
+  const isMediumChange = totalChanges > 50 || filesChanged > 2;
+
+  // Integration (merges, pull requests)
+  if (hasPattern(message, [
+    /merge (branch|pull request|pr|changes?)/i,
+    'pull request',
+    'merge',
+    'integrate',
+    'squash',
+    'rebase',
+    'merge branch',
+    'merge pull'
+  ])) {
+    return SSM_CATEGORIES.INTEGRATION;
+  }
+
+  // Rollback (reverts, rollbacks)
+  if (hasPattern(message, [
+    /revert/i,
+    'rollback',
+    'undo',
+    'back out',
+    'revert changes',
+    'roll back'
+  ])) {
+    return SSM_CATEGORIES.ROLLBACK;
+  }
+
+  // Architectural changes
+  if ( hasPattern(message, [
+    'architectur',
+    'refactor architect',
+    'refactor structure',
+    'refactor design',
+    'major refactor',
+    'restructure',
+    'redesign',
+    'system design',
+    'architecture change'
+  ])) {
+    return SSM_CATEGORIES.ARCHITECTURAL;
+  }
+
+  // Feature additions
+  if (hasPattern(message, [
+    /feat(\(\w+\))?:/i,
+    'add feature',
+    'new feature',
+    'implement',
+    'feature implementation',
+    'add new',
+    'introduce',
+    'create new'
+  ])) {
+    return SSM_CATEGORIES.FEATURE;
+  }
+
+  // Bug fixes
+  if (hasPattern(message, [
+    /fix(\(\w+\))?:/i,
+    'bugfix',
+    'bug fix',
+    'fix bug',
+    'fix issue',
+    'fix error',
+    'resolve issue',
+    'bug report',
+    'error fix',
+    'crash fix',
+    'bugs fixed'
+  ])) {
+    return SSM_CATEGORIES.BUG_FIX;
+  }
+
+  // Documentation
+  if (hasPattern(message, [
+    /docs?(\s*\(\w+\))?:/i,
+    'documentation',
+    'update docs',
+    'improve docs',
+    'add docs',
+    'readme',
+    'changelog',
+    'license',
+    'doc update',
+    'update readme'
+  ])) {
+    return SSM_CATEGORIES.DOCUMENTATION;
+  }
+
+  // Tests
+  if (hasPattern(message, [
+    /test(s|ing)?(\s*\(\w+\))?:/i,
+    'add test',
+    'update test',
+    'fix test',
+    'test coverage',
+    'unit test',
+    'integration test',
+    'testing',
+    'add test case'
+  ])) {
+    return SSM_CATEGORIES.TEST;
+  }
+
+  // Configuration
+  if (hasPattern(message, [
+    'config',
+    'configuration',
+    'update config',
+    'change setting',
+    'env',
+    'environment',
+    'package.json',
+    'webpack',
+    'babel',
+    'tsconfig',
+    'eslint',
+    'prettier',
+    'setup',
+    'configuration change'
+  ])) {
+    return SSM_CATEGORIES.CONFIGURATION;
+  }
+
+  // Refactoring
+  const changeRatio = (commit.linesAdded || 0) > 0 
+    ? (commit.linesRemoved || 0) / (commit.linesAdded || 1) 
+    : 0;
+    
+  if ((changeRatio > 0.7 && changeRatio < 1.3) || 
+      hasPattern(message, [
+        'refactor',
+        'clean up',
+        'cleanup',
+        'code quality',
+        'improve code',
+        'code cleanup',
+        'optimize',
+        'simplify',
+        'restructure code'
+      ])) {
+    return SSM_CATEGORIES.REFACTORING;
+  }
+
+  // Maintenance
+  if (hasPattern(message, [
+    'chore',
+    'maintenance',
+    'update dependency',
+    'bump version',
+    'dependency update',
+    'version bump',
+    'update deps',
+    'package update',
+    'update packages'
+  ])) {
+    return SSM_CATEGORIES.MAINTENANCE;
+  }
+
+  // Size-based fallbacks
+  if (totalChanges > 100) return SSM_CATEGORIES.ARCHITECTURAL; // Large changes are now considered Architectural
+  if (totalChanges > 20) return SSM_CATEGORIES.TRIVIAL; // Medium changes are now considered Trivial
+  
+  return SSM_CATEGORIES.TRIVIAL;
+};
+
 interface CodeQualityMetrics {
   total_loc: { value: number; assessment: string };
   avg_commit_size: { value: number; assessment: string };
@@ -133,6 +409,37 @@ interface AuthorCommitsResponse {
   branches: string[];
 }
 
+// Add this helper function to categorize commits by both SSM category and commit type
+const categorizeCommits = (commits: Commit[]) => {
+  const categories = new Map<string, {count: number, types: Set<string>}>();
+
+  commits?.forEach(commit => {
+    const ssmCategory = determineSSMCategory({
+      message: commit.message,
+      linesAdded: commit.additions,
+      linesRemoved: commit.deletions,
+      filesChanged: commit.files?.length || 0
+    });
+    
+    const commitType = getCommitType(commit.message);
+    
+    if (!categories.has(ssmCategory)) {
+      categories.set(ssmCategory, { count: 0, types: new Set() });
+    }
+    
+    const categoryData = categories.get(ssmCategory)!;
+    categoryData.count += 1;
+    categoryData.types.add(commitType);
+  });
+
+  return Array.from(categories.entries())
+    .map(([category, {count, types}]) => ({
+      category,
+      count,
+      types: Array.from(types).sort()
+    }))
+    .sort((a, b) => b.count - a.count);
+};
 
 export function AnalysisResults({ insights }: AnalysisResultsProps) {
   const [selectedAuthor, setSelectedAuthor] = useState(insights?.by_developer?.[0]?.username || "");
@@ -149,6 +456,23 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
       resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, []);
+
+  // Add this state to store commit categories
+  const [commitCategories, setCommitCategories] = useState<Array<{
+    category: string;
+    count: number;
+    types: string[];
+  }>>([]);
+
+  // Add this effect to update categories when selected author changes
+  useEffect(() => {
+    if (selectedAuthor && insights?.author_metrics?.[selectedAuthor]?.commits) {
+      const categories = categorizeCommits(insights.author_metrics[selectedAuthor].commits);
+      setCommitCategories(categories);
+    } else {
+      setCommitCategories([]);
+    }
+  }, [selectedAuthor, insights]);
 
   const getAssessmentColor = (assessment: string) => {
     switch (assessment.toLowerCase()) {
@@ -256,17 +580,18 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
         message: "No recent commits found",
         author: "N/A",
         date: "N/A",
-        branch:  "N/A",
+        branch: "N/A",
         hash: "",
         linesAdded: 0,
         linesRemoved: 0,
         filesChanged: 0,
-        impactLevel: "Medium"
+        impactLevel: "Medium",
+        ssmCategory: "None"
       };
     }
-
+  
     const commit = insights.latest_commit;
-    return {
+    const commitData = {
       message: commit.message || "No commit message",
       author: commit.author_login || commit.author_name || "Unknown",
       date: commit.date ? formatDate(commit.date) : "N/A",
@@ -275,10 +600,12 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
       linesAdded: commit.additions || 0,
       linesRemoved: commit.deletions || 0,
       filesChanged: commit.files?.length || 0,
-      impactLevel: "Medium" // Default impact level
+      impactLevel: "Medium", // Default impact level
+      ssmCategory: determineSSMCategory(commit)
     };
+  
+    return commitData;
   };
-
   const commitData = getCommitData();
   const hasCommitData = insights?.latest_commit !== undefined;
 
@@ -449,6 +776,44 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
                     <div className="text-lg font-bold text-purple-700 dark:text-purple-400">{commitData.impactLevel}</div>
                     <div className="text-xs text-purple-600 dark:text-purple-500">Impact Level</div>
                   </div>
+                </div>
+
+                {/* Analysis Summary */}
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">
+                    Type: {getCommitType(commitData.message)}
+                  </Badge>
+                  <Badge variant="outline">
+                    Complexity: {getComplexityLevel(commitData.linesAdded + commitData.linesRemoved)}
+                  </Badge>
+                  <Badge variant="outline">
+                    Quality: {getQualityAssessment(commitData.linesAdded, commitData.linesRemoved, commitData.filesChanged)}
+                  </Badge>
+                  <Badge 
+                    variant={
+                      getRiskLevel(commitData.linesAdded + commitData.linesRemoved, commitData.filesChanged) === "High"
+                        ? "destructive"
+                        : getRiskLevel(commitData.linesAdded + commitData.linesRemoved, commitData.filesChanged) === "Medium"
+                          ? "secondary"
+                          : "outline"
+                    }
+                  >
+                    Risk: {getRiskLevel(commitData.linesAdded + commitData.linesRemoved, commitData.filesChanged)}
+                  </Badge>
+                  <Badge variant="outline">
+                    {commitData.ssmCategory}
+                  </Badge>
+                </div>
+
+                {/* Detailed Analysis */}
+                <div className="mt-4 p-3 bg-background/50 rounded-lg border">
+                  <p className="text-foreground text-sm">
+                    {getCommitAnalysisText({
+                      ...commitData,
+                      author_name: commitData.author,
+                      author_login: commitData.author
+                    }, insights?.latest_commit, selectedAuthor || commitData.author)}
+                  </p>
                 </div>
 
                 {/* Changed Files */}
@@ -818,6 +1183,7 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
                 </CardContent>
               </Card>
 
+              
               {/* All Commits Section */}
               <Card className="bg-gradient-card shadow-card">
                 <CardHeader>
@@ -887,6 +1253,67 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
                                   <span className="text-muted-foreground">{commit.files.length} files changed</span>
                                 )}
                               </div>
+
+                              {/* Analysis Summary */}
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                <Badge variant="outline" className="text-xs">
+                                  Type: {getCommitType(commit.message || '')}
+                                </Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  Complexity: {getComplexityLevel((commit.additions || 0) + (commit.deletions || 0))}
+                                </Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  Quality: {getQualityAssessment(
+                                    commit.additions || 0,
+                                    commit.deletions || 0,
+                                    commit.files?.length || 0
+                                  )}
+                                </Badge>
+                                <Badge 
+                             
+                             variant={
+                                    getRiskLevel(
+                                      (commit.additions || 0) + (commit.deletions || 0),
+                                      commit.files?.length || 0
+                                    ) === "High"
+                                      ? "destructive"
+                                      : getRiskLevel(
+                                          (commit.additions || 0) + (commit.deletions || 0),
+                                          commit.files?.length || 0
+                                        ) === "Medium"
+                                      ? "secondary"
+                                      : "outline"
+                                  }
+                                  className="text-xs"
+                                >
+                                  Risk: {getRiskLevel(
+                                    (commit.additions || 0) + (commit.deletions || 0),
+                                    commit.files?.length || 0
+                                  )}
+                                </Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  {determineSSMCategory({
+                                    message: commit.message || '',
+                                    linesAdded: commit.additions || 0,
+                                    linesRemoved: commit.deletions || 0,
+                                    filesChanged: commit.files?.length || 0
+                                  })}
+                                </Badge>
+                              </div>
+
+                              {/* Detailed Analysis */}
+                              <div className="mt-2 p-2 bg-background/50 rounded border text-xs">
+                                {getCommitAnalysisText({
+                                  message: commit.message || '',
+                                  linesAdded: commit.additions || 0,
+                                  linesRemoved: commit.deletions || 0,
+                                  filesChanged: commit.files?.length || 0,
+                                  date: commit.date,
+                                  author_name: commit.author_name || commit.author_login || selectedAuthor,
+                                  author_login: commit.author_login || selectedAuthor
+                                }, commit, selectedAuthor)}
+                              </div>
+
                               {commit.files && commit.files.length > 0 && (
                                 <div className="mt-2 flex flex-wrap gap-1">
                                   {commit.files.slice(0, 3).map((file, fileIndex) => (
@@ -914,6 +1341,142 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
               </Card>
             </CardContent>
           </Card>
+
+          <Card className="bg-gradient-card shadow-card">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-black dark:text-black">Commit Categories for {selectedAuthor}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+              {/* Commit Types and Categories - Side by Side */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                   {/* Commit Categories */}
+                   <Card className="bg-muted">
+                      <CardHeader>
+                        <CardTitle className="text-sm text-foreground">By SSM Category</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          {commitCategories.length > 0 ? (
+                            commitCategories.map(({category, count}) => {
+                              const totalCommits = insights?.author_metrics?.[selectedAuthor]?.commits?.length || 1;
+                              const percentage = Math.round((count / totalCommits) * 100);
+                              
+                              const getCategoryColor = (cat: string) => {
+                                switch(cat) {
+                                  case SSM_CATEGORIES.INTEGRATION: return 'bg-blue-500';
+                                  case SSM_CATEGORIES.ROLLBACK: return 'bg-red-500';
+                                  case SSM_CATEGORIES.ARCHITECTURAL: return 'bg-purple-500';
+                                  case SSM_CATEGORIES.FEATURE: return 'bg-green-500';
+                                  case SSM_CATEGORIES.BUG_FIX: return 'bg-yellow-500';
+                                  case SSM_CATEGORIES.REFACTORING: return 'bg-indigo-500';
+                                  case SSM_CATEGORIES.DOCUMENTATION: return 'bg-cyan-500';
+                                  case SSM_CATEGORIES.TEST: return 'bg-pink-500';
+                                  case SSM_CATEGORIES.CONFIGURATION: return 'bg-orange-500';
+                                  case SSM_CATEGORIES.MAINTENANCE: return 'bg-gray-500';
+                                  case SSM_CATEGORIES.TRIVIAL: return 'bg-gray-300';
+                                  default: return 'bg-blue-500';
+                                }
+                              };
+
+                              return (
+                                <div key={category} className="space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium">{category}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {count} commit{count !== 1 ? 's' : ''} ({percentage}%)
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                    <div 
+                                      className={`h-full ${getCategoryColor(category)}`}
+                                      style={{ width: `${percentage}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No commit data available</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                    
+                    {/* Commit Types */}
+                    <Card className="bg-muted">
+                      <CardHeader>
+                        <CardTitle className="text-sm text-foreground">By Commit Type</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          {commitCategories.length > 0 ? (
+                            <div className="space-y-4">
+                              {/* Calculate type counts across all categories */}
+                              {(() => {
+                                const typeCounts = new Map<string, number>();
+                                const totalCommits = insights?.author_metrics?.[selectedAuthor]?.commits?.length || 1;
+                                
+                                // Count all commit types
+                                insights?.author_metrics?.[selectedAuthor]?.commits?.forEach(commit => {
+                                  const type = getCommitType(commit.message);
+                                  typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
+                                });
+
+                                // Convert to array and sort by count (descending)
+                                const sortedTypes = Array.from(typeCounts.entries())
+                                  .sort((a, b) => b[1] - a[1]);
+
+                                // Map of type to color
+                                const getTypeColor = (type: string) => {
+                                  switch(type.toLowerCase()) {
+                                    case 'feature': return 'bg-green-500';
+                                    case 'bug fix': return 'bg-red-500';
+                                    case 'refactor': return 'bg-blue-500';
+                                    case 'documentation': return 'bg-cyan-500';
+                                    case 'test': return 'bg-purple-500';
+                                    case 'chore': return 'bg-gray-500';
+                                    default: return 'bg-yellow-500';
+                                  }
+                                };
+
+                                return sortedTypes.map(([type, count]) => {
+                                  const percentage = Math.round((count / totalCommits) * 100);
+                                  return (
+                                    <div key={type} className="space-y-1">
+                                      <div className="flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm font-medium">{type}</span>
+                                          <span className="text-xs text-muted-foreground">
+                                            {count} commit{count !== 1 ? 's' : ''} ({percentage}%)
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                        <div 
+                                          className={`h-full ${getTypeColor(type)}`}
+                                          style={{ width: `${percentage}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No commit data available</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  </CardContent>
+                </Card>
+
         </TabsContent>
       </Tabs>
     </div>

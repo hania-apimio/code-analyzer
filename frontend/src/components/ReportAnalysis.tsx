@@ -185,13 +185,14 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
       });
       return;
     }
+    
   
     setIsAnalyzing(true);
     setError(null);
     
     try {
       let url = `${API_URL}/repos/${repositoryOwner}/${repositoryName}`;
-      
+            
       // If branches are selected, use the selected-branches endpoint
       if (selectedBranches.length > 0) {
         const branchesParam = selectedBranches.join(',');
@@ -200,7 +201,7 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
         // Otherwise, use the default insights endpoint
         url += '/insights';
       }
-  
+      
       const response = await fetch(url, {
         headers: {
           'X-GitHub-Token': personalToken,
@@ -243,6 +244,15 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
   };
 
   const handleAnalyzeCommit = () => {
+    if (!repositoryOwner.trim() || !repositoryName.trim() || !personalToken.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing Information",
+        description: "Please enter repository owner, repository name, and personal access token first.",
+      });
+      return;
+    }
+    
     if (!commitSha.trim()) {
       toast({
         variant: "destructive",
@@ -251,6 +261,7 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
       });
       return;
     }
+    
     setIsAnalyzingCommit(true);
     setIsCommitModalOpen(true);
   };
@@ -333,99 +344,11 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
               </p>
             </div>
 
-            {/* Start Date */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-black dark:text-black">Start Date (Optional)</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal bg-background border-border hover:border-primary transition-smooth",
-                      !startDate && "text-gray-600 dark:text-gray-400"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, "dd/MM/yyyy") : "dd/mm/yyyy"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-background border-border" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={startDate}
-                    onSelect={setStartDate}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* End Date */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-black dark:text-black">End Date (Optional)</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal bg-background border-border hover:border-primary transition-smooth",
-                      !endDate && "text-gray-600 dark:text-gray-400"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, "dd/MM/yyyy") : "dd/mm/yyyy"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-background border-border" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={endDate}
-                    onSelect={setEndDate}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+            
           </div>
         </CardContent>
       </Card>
 
-      {/* Commit Analysis */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Analyze Specific Commit</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center space-x-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Enter commit hash..."
-                className="pl-9"
-                value={commitSha}
-                onChange={(e) => setCommitSha(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeCommit()}
-              />
-            </div>
-            <Button 
-              onClick={handleAnalyzeCommit}
-              disabled={!commitSha.trim() || isAnalyzingCommit}
-            >
-              {isAnalyzingCommit ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                'Analyze Commit'
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Branch Selection */}
       <Card className="shadow-card bg-gradient-card">
@@ -535,28 +458,42 @@ export function ReportAnalysis({ onAnalysisComplete, onAnalyzeStart }: ReportAna
 
       {/* Direct Commit Analysis */}
       <Card className="shadow-card bg-gradient-card">
-        <CardHeader>
+      <CardHeader>
           <CardTitle className="text-black dark:text-black">Direct Commit Analysis</CardTitle>
           <p className="text-sm text-gray-600 dark:text-gray-600">
             Analyze a specific commit by its hash (optional)
           </p>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            <Label htmlFor="commit" className="text-sm font-medium text-black dark:text-black">
-              Commit Hash
-            </Label>
-            <Input
-              id="commit"
-              placeholder="Enter full commit hash (e.g., 62b6494b9c24573bfe9b1f7cf2d96137694b80f)"
-              value={commitHash}
-              onChange={(e) => setCommitHash(e.target.value)}
-              className="bg-background border-border hover:border-primary focus:border-primary transition-smooth"
-            />
-            <p className="text-xs text-gray-600 dark:text-gray-600">
+          <div className="flex items-center space-x-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Enter full commit hash (e.g., 62b6494b9c24573bfe9b1f7cf2d96137694b80f)"
+                className="pl-9"
+                value={commitSha}
+                onChange={(e) => setCommitSha(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeCommit()}
+              />
+            </div>
+            <Button 
+              onClick={handleAnalyzeCommit}
+              disabled={!commitSha.trim() || isAnalyzingCommit}
+            >
+              {isAnalyzingCommit ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                'Analyze Commit'
+              )}
+            </Button>
+          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-600 mt-2 ">
               Enter the full commit hash (40 characters) to analyze a specific commit directly
             </p>
-          </div>
         </CardContent>
       </Card>
 

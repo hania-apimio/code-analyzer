@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Loader2, GitCommit, User, Calendar, FileText, Plus, Minus, Code } from "lucide-react";
+import { Loader2, GitCommit, User, Calendar, FileText, Plus, Minus, Code, X } from "lucide-react";
 
 interface CommitFile {
   filename: string;
@@ -44,6 +44,40 @@ interface CommitAnalysisModalProps {
   commitSha: string;
   token: string;
 }
+
+// Helper functions for commit analysis
+const getCommitType = (message: string): string => {
+  const messageLower = message.toLowerCase();
+  if (messageLower.includes('fix') || messageLower.includes('bug')) return 'Bug Fix';
+  if (messageLower.includes('feat') || messageLower.includes('add')) return 'Feature';
+  if (messageLower.includes('refactor')) return 'Refactor';
+  if (messageLower.includes('doc')) return 'Documentation';
+  if (messageLower.includes('test')) return 'Test';
+  if (messageLower.includes('chore')) return 'Chore';
+  return 'Other';
+};
+
+const getComplexityLevel = (totalChanges: number): string => {
+  if (totalChanges < 10) return 'Simple';
+  if (totalChanges < 50) return 'Moderate';
+  if (totalChanges < 200) return 'Complex';
+  return 'Very Complex';
+};
+
+const getQualityAssessment = (added: number, removed: number, filesChanged: number): string => {
+  const changeRatio = added > 0 ? removed / added : 0;
+  if (filesChanged === 0) return 'N/A';
+  if (filesChanged > 10) return 'Needs Review';
+  if (changeRatio > 3) return 'Questionable';
+  return 'Good';
+};
+
+const getRiskLevel = (totalChanges: number, filesChanged: number): string => {
+  if (filesChanged === 0) return 'None';
+  if (totalChanges > 100 || filesChanged > 5) return 'High';
+  if (totalChanges > 50 || filesChanged > 2) return 'Medium';
+  return 'Low';
+};
 
 export function CommitAnalysisModal({ 
   isOpen, 
@@ -223,6 +257,34 @@ export function CommitAnalysisModal({
               </CardContent>
             </Card>
 
+
+            {/* Analysis Summary */}
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">
+                Type: {getCommitType(commit.message)}
+              </Badge>
+              <Badge variant="outline">
+                Complexity: {getComplexityLevel(commit.stats.additions + commit.stats.deletions)}
+              </Badge>
+              <Badge variant="outline">
+                Quality: {getQualityAssessment(commit.stats.additions, commit.stats.deletions, commit.files.length)}
+              </Badge>
+              <Badge 
+                variant={
+                  getRiskLevel(commit.stats.additions + commit.stats.deletions, commit.files.length) === "High"
+                    ? "destructive"
+                    : getRiskLevel(commit.stats.additions + commit.stats.deletions, commit.files.length) === "Medium"
+                      ? "secondary"
+                      : "outline"
+                }
+              >
+                Risk: {getRiskLevel(commit.stats.additions + commit.stats.deletions, commit.files.length)}
+              </Badge>
+              {/* <Badge variant="outline">
+                {commit.ssmCategory}
+              </Badge> */}
+            </div>
+
             {/* Changed Files */}
             <Card>
               <CardHeader className="pb-2">
@@ -262,9 +324,10 @@ export function CommitAnalysisModal({
                       {file.patch && (
                         <div className="mt-2">
                           <div className="text-xs font-medium mb-1 text-muted-foreground">Changes:</div>
-                          <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">
+                          <pre className="bg-muted p-2 rounded text-xs whitespace-pre-wrap break-words overflow-y-auto">
                             <code>{file.patch}</code>
                           </pre>
+
                         </div>
                       )}
                     </div>
