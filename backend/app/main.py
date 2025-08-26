@@ -1,8 +1,10 @@
 import os
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 from dotenv import load_dotenv
 import requests
 from pydantic import BaseModel
+import concurrent.futures
+import threading
 
 # Load environment variables from .env file
 load_dotenv()
@@ -556,7 +558,7 @@ async def get_repo_insights(
                            if (c.get("deletions") or 0) < 50
                            and (c.get("additions") or 0) < 200)
             simple_commits = sum(1 for c in metrics["commits"]
-                                 if len(c.get("files") or []) <= 3)
+                                 if len(c.get("files") or []) <= 5)
 
             quality_score = round((good_quality / total_commits) * 100, 2) if total_commits else 0
             low_risk_score = round((low_risk / total_commits) * 100, 2) if total_commits else 0
@@ -616,7 +618,7 @@ async def get_repo_insights(
             all_commits.values(),
             key=lambda x: parse_date(x.get("date")),
             reverse=True
-        )[:5]
+        )
 
         latest_commit = recent_commits[0] if recent_commits else None
 
@@ -1020,3 +1022,210 @@ async def get_commit_details(
             status_code=500,
             detail=f"Error fetching commit details: {error_detail}"
         )
+
+@app.get("/repos/{owner}/{repo}/detailed-commit-info")
+async def get_detailed_commit_info(
+    owner: str,
+    repo: str,
+    x_github_token: Optional[str] = Header(default=None),
+    token: Optional[str] = Query(default=None),
+):
+    """
+    Provides detailed information for each commit in the repository.
+    """
+    pat = resolve_token(x_github_token, token)
+    commits = fetch_commits(pat, owner, repo)
+    detailed_info = [process_commit(commit) for commit in commits]
+    return {"detailed_commit_info": detailed_info}
+
+
+def fetch_commits(token: str, owner: str, repo: str) -> List[Dict[str, Any]]:
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    branches_url = f"https://api.github.com/repos/{owner}/{repo}/branches"
+    branches_response = requests.get(branches_url, headers=headers)
+    if branches_response.status_code != 200:
+        print(f"Error fetching branches: {branches_response.status_code} {branches_response.text}")
+        return []
+
+    branches = branches_response.json()
+    all_commits = []
+    lock = threading.Lock()
+
+    def fetch_commit_details(commit, branch_name):
+        sha = commit.get("sha")
+        detail_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}"
+        detail_response = requests.get(detail_url, headers=headers)
+        if detail_response.status_code == 200:
+            detailed_commit = detail_response.json()
+            detailed_commit["branch"] = branch_name
+            with lock:
+                all_commits.append(detailed_commit)
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = []
+        for branch in branches:
+            branch_name = branch.get("name")
+            commits_url = f"https://api.github.com/repos/{owner}/{repo}/commits?sha={branch_name}&per_page=100"
+            response = requests.get(commits_url, headers=headers)
+            if response.status_code == 200:
+                commits = response.json()
+                for commit in commits:
+                    futures.append(executor.submit(fetch_commit_details, commit, branch_name))
+            else:
+                print(f"Error fetching commits for branch {branch_name}: {response.status_code} {response.text}")
+
+        # Wait for all futures to complete
+        concurrent.futures.wait(futures)
+
+    # Sort all commits by date from newest to oldest
+    all_commits.sort(key=lambda x: x["commit"]["author"]["date"], reverse=True)
+
+    return all_commits
+
+
+def process_commit(commit: Dict[str, Any]) -> Dict[str, Any]:
+    commit_data = commit.get("commit", {})
+    author_info = commit_data.get("author", {})
+    stats = commit.get("stats", {})
+    files = commit.get("files", [])
+
+    return {
+        "commit_message": commit_data.get("message"),
+        "author_name": author_info.get("name"),
+        "date_of_commit": author_info.get("date"),
+        "commit_hash": commit.get("sha"),
+        "branch": commit.get("branch"),  # This may need additional logic to determine
+        "lines_added": stats.get("additions"),
+        "lines_removed": stats.get("deletions"),
+        "files_changed": [file.get("filename") for file in files],
+        "impact_level": calculate_impact_level(commit),
+        "complexity": calculate_complexity(commit),
+        "quality": assess_quality(commit),
+        "risk": evaluate_risk(commit),
+        "documentation_score": score_documentation(commit),
+        "file_types_involved": identify_file_types(commit),
+        "commit_specific_scores": calculate_commit_specific_scores(commit),
+    }
+
+
+def calculate_impact_level(commit: Dict[str, Any]) -> str:
+    files_changed = len(commit.get("files", []))
+    if files_changed >= 3:
+        return "High"
+    elif files_changed > 1:
+        return "Medium"
+    return "Low"
+
+
+def calculate_complexity(commit: Dict[str, Any]) -> str:
+    changes = commit.get("additions", 0) + commit.get("deletions", 0)
+    if changes >= 100:
+        return "High"
+    elif changes >= 500:
+        return "Moderate"
+    return "Low"
+
+
+def assess_quality(commit: Dict[str, Any]) -> str:
+    message = commit.get("message", "")
+    if len(message) >= 10 and any(verb in message for verb in ["add", "fix", "update", "refactor"]):
+        return "Good"
+    return "Fair"
+
+
+def evaluate_risk(commit: Dict[str, Any]) -> str:
+    changes = commit.get("additions", 0) + commit.get("deletions", 0)
+    files_changed = len(commit.get("files", []))
+    if changes > 500 or files_changed > 30:
+        return "High"
+    elif changes >= 100 or files_changed >= 5:
+        return "Medium"
+    return "Low"
+
+
+def score_documentation(commit: Dict[str, Any]) -> float:
+    message = commit.get("message", "")
+    if "docs" in message or "documentation" in message:
+        return 80.0
+    return 50.0
+
+
+def identify_file_types(commit: Dict[str, Any]) -> List[str]:
+    file_types = set()
+    for file in commit.get("files", []):
+        filename = file.get("filename", "")
+        if filename.endswith(('.py', '.js', '.ts')):
+            file_types.add("Source Code")
+        elif filename.endswith(('.md', '.rst')):
+            file_types.add("Documentation")
+    return list(file_types)
+
+
+def calculate_commit_specific_scores(commit: Dict[str, Any]) -> Dict[str, float]:
+    message = commit.get("message", "")
+    additions = commit.get("additions", 0)
+    deletions = commit.get("deletions", 0)
+    files = commit.get("files", [])
+    files_changed = len(files)
+
+    # Code Quality
+    code_quality = 50
+    if len(message) >= 10 and any(verb in message for verb in ["add", "fix", "update", "refactor"]):
+        code_quality += 10
+    if additions + deletions > 500 or files_changed > 30:
+        code_quality -= 20
+    if files_changed <= 10 and additions + deletions <= 300:
+        code_quality += 10
+    if any(word in message for word in ["refactor", "cleanup", "style"]):
+        code_quality += 10
+
+    # Performance
+    performance = 50
+    if any(word in message for word in ["optimize", "perf", "speed", "cache"]):
+        performance += 20
+    if any("benchmarks/" in file.get("filename", "") for file in files):
+        performance += 20
+    if deletions > additions:
+        performance += 10
+
+    # Security
+    security = 50
+    if any(word in message for word in ["security", "CVE", "auth", "encryption"]):
+        security += 20
+    if any(file.get("filename", "").startswith("auth/") for file in files):
+        security += 20
+    if any(file.get("filename", "").startswith("crypto/") for file in files):
+        security += 10
+
+    # Maintainability
+    maintainability = 50
+    if any(word in message for word in ["refactor", "cleanup", "restructure"]):
+        maintainability += 20
+    if deletions > additions:
+        maintainability += 10
+    if any("//" in file.get("patch", "") or "#" in file.get("patch", "") for file in files):
+        maintainability += 10
+
+    # Testing
+    testing = 50
+    if any("tests/" in file.get("filename", "") for file in files):
+        testing += 30
+    if any(".github/workflows/" in file.get("filename", "") for file in files):
+        testing += 20
+    if "test" in message or "coverage" in message:
+        testing += 10
+
+    # Documentation
+    documentation = score_documentation(commit)
+
+    return {
+        "code_quality": min(max(code_quality, 0), 100),
+        "performance": min(max(performance, 0), 100),
+        "security": min(max(security, 0), 100),
+        "maintainability": min(max(maintainability, 0), 100),
+        "testing": min(max(testing, 0), 100),
+        "documentation": min(max(documentation, 0), 100),
+    }

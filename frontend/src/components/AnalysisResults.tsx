@@ -409,6 +409,41 @@ interface AuthorCommitsResponse {
   branches: string[];
 }
 
+const CommitCard = ({ commit }) => (
+  <Card className="bg-gradient-card shadow-card mt-4">
+    <CardHeader>
+      <CardTitle className="text-black dark:text-black">{commit.commit_message}</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <div className="text-sm text-muted-foreground">
+        <p><strong>Author:</strong> {commit.author_name}</p>
+        <p><strong>Date:</strong> {new Date(commit.date_of_commit).toLocaleDateString()}</p>
+        <p><strong>Branch:</strong> {commit.branch}</p>
+        <p><strong>Commit Hash:</strong> {commit.commit_hash.substring(0, 7)}</p>
+        <p><strong>Lines Added:</strong> +{commit.lines_added}</p>
+        <p><strong>Lines Removed:</strong> -{commit.lines_removed}</p>
+        <p><strong>Files Changed:</strong> {commit.files_changed.join(', ')}</p>
+        <p><strong>Impact Level:</strong> {commit.impact_level}</p>
+        <p><strong>Complexity:</strong> {commit.complexity}</p>
+        <p><strong>Quality:</strong> {commit.quality}</p>
+        <p><strong>Risk:</strong> {commit.risk}</p>
+        <p><strong>Documentation Score:</strong> {commit.documentation_score}</p>
+        <div>
+          <strong>Commit-Specific Scores:</strong>
+          <ul>
+            <li>Code Quality: {commit.commit_specific_scores.code_quality}</li>
+            <li>Performance: {commit.commit_specific_scores.performance}</li>
+            <li>Security: {commit.commit_specific_scores.security}</li>
+            <li>Maintainability: {commit.commit_specific_scores.maintainability}</li>
+            <li>Testing: {commit.commit_specific_scores.testing}</li>
+            <li>Documentation: {commit.commit_specific_scores.documentation}</li>
+          </ul>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+);
+
 // Add this helper function to categorize commits by both SSM category and commit type
 const categorizeCommits = (commits: Commit[]) => {
   const categories = new Map<string, {count: number, types: Set<string>}>();
@@ -449,6 +484,44 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
   const [personalToken, setPersonalToken] = useState("");
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const resultsRef = useRef<HTMLDivElement>(null);
+  const [showCommitAnalysis, setShowCommitAnalysis] = useState(false);
+  const [commitAnalysisData, setCommitAnalysisData] = useState(null);
+  const [isLoadingCommitAnalysis, setIsLoadingCommitAnalysis] = useState(false);
+
+  const toggleCommitAnalysis = () => {
+    setShowCommitAnalysis((prev) => !prev);
+  };
+
+  const fetchCommitAnalysisData = async () => {
+    if (commitAnalysisData) {
+      setShowCommitAnalysis((prev) => !prev);
+      return;
+    }
+
+    setIsLoadingCommitAnalysis(true);
+
+    try {
+      const response = await fetch(`${API_URL}/repos/${insights.owner}/${insights.repo}/detailed-commit-info`, {
+        headers: {
+          'X-GitHub-Token': insights.token,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch commit analysis data');
+      }
+
+      const data = await response.json();
+      setCommitAnalysisData(data);
+      setShowCommitAnalysis(true);
+    } catch (error) {
+      console.error('Error fetching commit analysis data:', error);
+    } finally {
+      setIsLoadingCommitAnalysis(false);
+    }
+  };
 
   // Auto-scroll to results when component mounts
   useEffect(() => {
@@ -571,7 +644,8 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
     : [];
 
   // Get top 5 developers by commit count
-  const developerData = insights?.by_developer?.slice(0, 5) || [];
+  const developerData = insights?.by_developer?.slice(0, -1) || [];
+  // console.log(developerData);
 
   // Get commit data from insights or use defaults
   const getCommitData = () => {
@@ -990,6 +1064,7 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
               ))}
             </CardContent>
           </Card>
+
         </TabsContent>
 
         {/* Developer Performance Tab */}
@@ -1098,6 +1173,23 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
               ))}
             </CardContent>
           </Card>
+          
+          <Button onClick={fetchCommitAnalysisData} className="mt-4" disabled={isLoadingCommitAnalysis}>
+            {isLoadingCommitAnalysis ? "Loading..." : showCommitAnalysis ? "Hide Per-Commit Analysis" : "Show Per-Commit Analysis"}
+          </Button>
+
+          {showCommitAnalysis && commitAnalysisData && (
+            <div className="transition-all duration-300 ease-in-out">
+              <Card className="bg-gradient-card shadow-card mt-4">
+                <CardHeader>
+                  <CardTitle className="text-black dark:text-black">Commit Analysis</CardTitle>
+                </CardHeader>
+              </Card>
+              {commitAnalysisData.detailed_commit_info.map((commit, index) => (
+                <CommitCard key={index} commit={commit} />
+              ))}
+            </div>
+          )}
             </CardContent>
           </Card>
         </TabsContent>
