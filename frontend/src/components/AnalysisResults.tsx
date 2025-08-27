@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Users, GitCommit, GitBranch, CalendarClock, TrendingUp, TrendingDown, Minus, CheckCircle2, User, Calendar, BarChart2 } from "lucide-react";
+import { Download, Users, GitCommit, GitBranch, CalendarClock, TrendingUp, TrendingDown, Minus, CheckCircle2, User, Calendar, BarChart2, Hash } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -409,40 +409,240 @@ interface AuthorCommitsResponse {
   branches: string[];
 }
 
-const CommitCard = ({ commit }) => (
-  <Card className="bg-gradient-card shadow-card mt-4">
-    <CardHeader>
-      <CardTitle className="text-black dark:text-black">{commit.commit_message}</CardTitle>
-    </CardHeader>
-    <CardContent>
-      <div className="text-sm text-muted-foreground">
-        <p><strong>Author:</strong> {commit.author_name}</p>
-        <p><strong>Date:</strong> {new Date(commit.date_of_commit).toLocaleDateString()}</p>
-        <p><strong>Branch:</strong> {commit.branch}</p>
-        <p><strong>Commit Hash:</strong> {commit.commit_hash.substring(0, 7)}</p>
-        <p><strong>Lines Added:</strong> +{commit.lines_added}</p>
-        <p><strong>Lines Removed:</strong> -{commit.lines_removed}</p>
-        <p><strong>Files Changed:</strong> {commit.files_changed.join(', ')}</p>
-        <p><strong>Impact Level:</strong> {commit.impact_level}</p>
-        <p><strong>Complexity:</strong> {commit.complexity}</p>
-        <p><strong>Quality:</strong> {commit.quality}</p>
-        <p><strong>Risk:</strong> {commit.risk}</p>
-        <p><strong>Documentation Score:</strong> {commit.documentation_score}</p>
-        <div>
-          <strong>Commit-Specific Scores:</strong>
-          <ul>
-            <li>Code Quality: {commit.commit_specific_scores.code_quality}</li>
-            <li>Performance: {commit.commit_specific_scores.performance}</li>
-            <li>Security: {commit.commit_specific_scores.security}</li>
-            <li>Maintainability: {commit.commit_specific_scores.maintainability}</li>
-            <li>Testing: {commit.commit_specific_scores.testing}</li>
-            <li>Documentation: {commit.commit_specific_scores.documentation}</li>
-          </ul>
+const CommitCard = ({ commit }) => {
+  // Helper function to get badge variant based on value
+  const getBadgeVariant = (value, type = 'default') => {
+    if (type === 'risk') {
+      if (value?.toLowerCase() === 'high') return 'destructive';
+      if (value?.toLowerCase() === 'medium') return 'secondary';
+      return 'default';
+    }
+    
+    if (type === 'quality') {
+      if (value?.toLowerCase() === 'excellent') return 'default';
+      if (value?.toLowerCase() === 'good') return 'secondary';
+      if (value?.toLowerCase() === 'fair') return 'warning';
+      return 'destructive';
+    }
+
+    const numValue = typeof value === 'string' ? parseInt(value) : value;
+    if (numValue >= 80) return 'default';
+    if (numValue >= 50) return 'secondary';
+    return 'destructive';
+  };
+
+  // Helper function to format score display
+  const formatScore = (value) => {
+    const num = typeof value === 'string' ? parseInt(value) : value;
+    return isNaN(num) ? 'N/A' : num;
+  };
+
+  return (
+    <Card className="mb-6 border border-gray-200 dark:border-gray-700">
+      <CardHeader className="pb-3 border-b">
+        <div className="flex justify-between items-start">
+          <div>
+            {/* Commit message */}
+            <CardTitle className="text-base font-medium text-gray-900 dark:text-white">
+              {commit.commit_message || "No commit message"}
+            </CardTitle>
+
+            {/* Branch, Risk, Date, Author */}
+            <div className="flex items-center gap-4 mt-1 flex-wrap">
+
+              {/* Author */}
+              {commit.author_name && (
+                <span className="flex items-center text-xs text-black-500">
+                  <User className="w-3 h-3 mr-1" />
+                  {commit.author_name}
+                </span>
+              )}
+
+              {/* Branch */}
+              <Badge variant="outline" className="text-xs font-normal">
+                <GitBranch className="w-3 h-3 mr-1" />
+                {commit.branch || "main"}
+              </Badge>
+
+              {/* Risk */}
+              <Badge
+                variant={
+                  getRiskLevel(
+                    commit.lines_added + commit.lines_removed,
+                    commit.files_changed.length
+                  ) === "High"
+                    ? "destructive"
+                    : getRiskLevel(
+                        commit.lines_added + commit.lines_removed,
+                        commit.files_changed.length
+                      ) === "Medium"
+                    ? "secondary"
+                    : "outline"
+                }
+              >
+                Risk:{" "}
+                {getRiskLevel(
+                  commit.lines_added + commit.lines_removed,
+                  commit.files_changed
+                )}
+              </Badge>
+
+              {/* Date */}
+              <span className="flex items-center text-xs text-black-500">
+                <Calendar className="w-3 h-3 mr-1" />
+                {new Date(commit.date_of_commit).toLocaleDateString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Commit Hash */}
+          <div className="flex items-center gap-2">
+            <span className="flex items-center text-xs text-gray-500 font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+              <Hash className="w-3 h-3 mr-1" />
+              {commit.commit_hash?.substring(0, 7) || "N/A"}
+            </span>
+          </div>
         </div>
-      </div>
-    </CardContent>
-  </Card>
-);
+      </CardHeader>
+
+      <CardContent className="p-4">
+        <div className="grid grid-cols-1 gap-6">
+          {/* Stats */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg p-3 text-center bg-white dark:bg-gray-900 border">
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  +{commit.lines_added || 0}
+                </div>
+                <div className="text-xs text-gray-500">Added</div>
+              </div>
+              <div className="rounded-lg p-3 text-center bg-white dark:bg-gray-900 border">
+                <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                  -{commit.lines_removed || 0}
+                </div>
+                <div className="text-xs text-gray-500">Removed</div>
+              </div>
+              <div className="rounded-lg p-3 text-center bg-white dark:bg-gray-900 border">
+                <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                  {Array.isArray(commit.files_changed)
+                    ? commit.files_changed.length
+                    : 0}
+                </div>
+                <div className="text-xs text-gray-500">Files</div>
+              </div>
+            </div>
+
+            {/* Changed Files */}
+            {Array.isArray(commit.files_changed) &&
+              commit.files_changed.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    Changed Files
+                  </h4>
+                  <div className="text-xs space-y-1 overflow-y-auto bg-gray-50 dark:bg-gray-800 p-2 rounded-md">
+                    {commit.files_changed.map((file, index) => (
+                      <div
+                        key={index}
+                        className="font-mono truncate"
+                        title={file}
+                      >
+                        {file}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+          </div>
+
+          {/* Metrics & File Types side by side */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Metrics */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Metrics
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className="w-fit">
+                  Type: {getCommitType(commit.commit_message)}
+                </Badge>
+                <Badge variant="outline" className="w-fit">
+                  Complexity:{" "}
+                  {getComplexityLevel(
+                    commit.lines_added + commit.lines_removed
+                  )}
+                </Badge>
+                <Badge variant="outline" className="w-fit">
+                  Quality:{" "}
+                  {getQualityAssessment(
+                    commit.lines_added,
+                    commit.lines_removed,
+                    commit.filesChanged
+                  )}
+                </Badge>
+              </div>
+            </div>
+
+            {/* File Types */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                File Types
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {commit.file_types_involved.map((type: string, index: number) => (
+                  <Badge
+                    key={index}
+                    variant="outline"
+                    className="text-xs capitalize w-fit"
+                  >
+                    {type.toLowerCase()}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Scores */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Scores
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {commit.commit_specific_scores &&
+                Object.entries(commit.commit_specific_scores).map(
+                  ([key, value]) => {
+                    const score = formatScore(value);
+                    const scoreNum = typeof score === "number" ? score : 0;
+                    return (
+                      <div key={key} className="space-y-1">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-gray-700 dark:text-gray-300 capitalize">
+                            {key.replace("_", " ")}
+                          </span>
+                          <span className="font-medium">{score}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2">
+                          <div
+                            className={`h-full rounded-full ${
+                              scoreNum >= 80
+                                ? "bg-green-500"
+                                : scoreNum >= 50
+                                ? "bg-yellow-500"
+                                : "bg-red-500"
+                            }`}
+                            style={{ width: `${Math.min(scoreNum, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 // Add this helper function to categorize commits by both SSM category and commit type
 const categorizeCommits = (commits: Commit[]) => {
@@ -644,8 +844,14 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
     : [];
 
   // Get top 5 developers by commit count
-  const developerData = insights?.by_developer?.slice(0, -1) || [];
-  // console.log(developerData);
+  const developerData = insights?.by_developer?.length > 0 
+    ? Array.isArray(insights.by_developer) 
+      ? insights.by_developer
+      : Object.entries(insights.by_developer).map(([username, commits]) => ({
+          username,
+          commits: Number(commits) || 0
+        }))
+    : [];
 
   // Get commit data from insights or use defaults
   const getCommitData = () => {
@@ -1031,7 +1237,7 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
               <p className="text-sm text-gray-600 dark:text-gray-600">Latest commits across all branches</p>
             </CardHeader>
             <CardContent className="space-y-3">
-              {insights?.recent_commits?.map((commit, index) => (
+              {insights?.recent_commits?.slice(0, 5).map((commit, index) => (
                 <div key={index} className="flex items-start p-4 bg-muted rounded-lg gap-3">
                   <div className="flex-shrink-0 mt-0.5">
                     <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
@@ -1140,7 +1346,7 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
               <p className="text-sm text-gray-600 dark:text-gray-600">Latest commits across all branches</p>
             </CardHeader>
             <CardContent className="space-y-3">
-              {insights?.recent_commits?.map((commit, index) => (
+              {insights?.recent_commits?.slice(0, 5).map((commit, index) => (
                 <div key={index} className="flex items-start p-4 bg-muted rounded-lg gap-3">
                   <div className="flex-shrink-0 mt-0.5">
                     <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
@@ -1184,10 +1390,13 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
                 <CardHeader>
                   <CardTitle className="text-black dark:text-black">Commit Analysis</CardTitle>
                 </CardHeader>
+                <CardContent>
+                  {commitAnalysisData.detailed_commit_info.map((commit, index) => (
+                    <CommitCard key={index} commit={commit} />
+                  ))}
+                </CardContent>
               </Card>
-              {commitAnalysisData.detailed_commit_info.map((commit, index) => (
-                <CommitCard key={index} commit={commit} />
-              ))}
+            
             </div>
           )}
             </CardContent>
@@ -1309,8 +1518,10 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
                       .map((commit) => (
                         <div key={commit.sha} className="p-4 bg-muted rounded-lg">
                           <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <User className="w-5 h-5 text-primary" />
+                            <div className="flex-shrink-0 mt-0.5">
+                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                <User className="w-5 h-5 text-primary" />
+                              </div>
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between">

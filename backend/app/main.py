@@ -1044,6 +1044,8 @@ def fetch_commits(token: str, owner: str, repo: str) -> List[Dict[str, Any]]:
         "Authorization": f"token {token}",
         "Accept": "application/vnd.github.v3+json"
     }
+    
+    # First, get all branches
     branches_url = f"https://api.github.com/repos/{owner}/{repo}/branches"
     branches_response = requests.get(branches_url, headers=headers)
     if branches_response.status_code != 200:
@@ -1051,39 +1053,78 @@ def fetch_commits(token: str, owner: str, repo: str) -> List[Dict[str, Any]]:
         return []
 
     branches = branches_response.json()
-    all_commits = []
+    all_commits = {}
+    seen_shas = set()
     lock = threading.Lock()
 
     def fetch_commit_details(commit, branch_name):
+        nonlocal all_commits, seen_shas
         sha = commit.get("sha")
+        
+        # Skip if we've already processed this commit
+        with lock:
+            if sha in seen_shas:
+                return
+            seen_shas.add(sha)
+        
+        # Get detailed commit info
         detail_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}"
         detail_response = requests.get(detail_url, headers=headers)
+        
         if detail_response.status_code == 200:
             detailed_commit = detail_response.json()
-            detailed_commit["branch"] = branch_name
+            
+            # Initialize branches list if it doesn't exist
+            if "branches" not in detailed_commit:
+                detailed_commit["branches"] = []
+                
+            # Add the current branch if not already present
             with lock:
-                all_commits.append(detailed_commit)
+                if sha not in all_commits:
+                    detailed_commit["branches"] = [branch_name]
+                    all_commits[sha] = detailed_commit
+                else:
+                    # If commit exists, just add the branch if it's not already there
+                    if branch_name not in all_commits[sha]["branches"]:
+                        all_commits[sha]["branches"].append(branch_name)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = []
         for branch in branches:
             branch_name = branch.get("name")
-            commits_url = f"https://api.github.com/repos/{owner}/{repo}/commits?sha={branch_name}&per_page=100"
-            response = requests.get(commits_url, headers=headers)
-            if response.status_code == 200:
+            page = 1
+            while True:
+                # Get commits with pagination
+                commits_url = f"https://api.github.com/repos/{owner}/{repo}/commits?sha={branch_name}&per_page=100&page={page}"
+                response = requests.get(commits_url, headers=headers)
+                
+                if response.status_code != 200:
+                    print(f"Error fetching commits for branch {branch_name}: {response.status_code} {response.text}")
+                    break
+                    
                 commits = response.json()
+                if not commits:
+                    break
+                    
                 for commit in commits:
                     futures.append(executor.submit(fetch_commit_details, commit, branch_name))
-            else:
-                print(f"Error fetching commits for branch {branch_name}: {response.status_code} {response.text}")
+                
+                page += 1
+                # GitHub API limits to 100 commits per page, so if we get less, we've reached the end
+                if len(commits) < 100:
+                    break
 
         # Wait for all futures to complete
         concurrent.futures.wait(futures)
 
-    # Sort all commits by date from newest to oldest
-    all_commits.sort(key=lambda x: x["commit"]["author"]["date"], reverse=True)
+    # Convert dict to list and sort by commit date (newest first)
+    unique_commits = list(all_commits.values())
+    unique_commits.sort(
+        key=lambda x: x["commit"]["author"].get("date", ""), 
+        reverse=True
+    )
 
-    return all_commits
+    return unique_commits
 
 
 def process_commit(commit: Dict[str, Any]) -> Dict[str, Any]:
@@ -1156,12 +1197,45 @@ def score_documentation(commit: Dict[str, Any]) -> float:
 def identify_file_types(commit: Dict[str, Any]) -> List[str]:
     file_types = set()
     for file in commit.get("files", []):
-        filename = file.get("filename", "")
-        if filename.endswith(('.py', '.js', '.ts')):
-            file_types.add("Source Code")
-        elif filename.endswith(('.md', '.rst')):
+        filename = file.get("filename", "").lower()
+
+        if filename.endswith(".py"):
+            file_types.add("Python")
+        elif filename.endswith(".js"):
+            file_types.add("JavaScript")
+        elif filename.endswith(".ts"):
+            file_types.add("TypeScript")
+        elif filename.endswith(".jsx"):
+            file_types.update(["JavaScript", "CSS"])  # add both, no duplicates
+        elif filename.endswith(".tsx"):
+            file_types.update(["TypeScript", "CSS"])  # add both, no duplicates
+        elif filename.endswith(".css"):
+            file_types.add("CSS")
+        elif filename.endswith((".scss", ".sass")):
+            file_types.add("Sass/SCSS")
+        elif filename.endswith(".html"):
+            file_types.add("HTML")
+        elif filename.endswith(".json"):
+            file_types.add("JSON")
+        elif filename.endswith((".yml", ".yaml")):
+            file_types.add("YAML")
+        elif filename.endswith(".xml"):
+            file_types.add("XML")
+        elif filename.endswith((".md", ".rst")):
             file_types.add("Documentation")
-    return list(file_types)
+        elif filename.endswith((".sh", ".bash")):
+            file_types.add("Shell Script")
+        elif filename.endswith(".sql"):
+            file_types.add("SQL")
+        elif filename.endswith(".dockerfile") or "dockerfile" in filename:
+            file_types.add("Docker")
+        elif filename.endswith((".toml", ".ini", ".cfg", ".conf")):
+            file_types.add("Configuration")
+        # else:
+        #     file_types.add("Other")
+
+    return sorted(file_types)  # sorted list for consistency
+
 
 
 def calculate_commit_specific_scores(commit: Dict[str, Any]) -> Dict[str, float]:
