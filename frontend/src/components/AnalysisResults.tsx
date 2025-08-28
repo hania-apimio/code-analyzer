@@ -835,6 +835,42 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
     fetchAuthorCommits();
   }, [selectedAuthor, insights]);
 
+  const developerMetrics = insights?.by_developer.map(dev => ({
+    username: dev.username,
+    totalCommits: dev.commits,
+    linesAdded: insights.author_metrics[dev.username]?.lines_added || 0,
+    linesRemoved: insights.author_metrics[dev.username]?.lines_removed || 0,
+    qualityScore: insights.author_metrics[dev.username]?.quality_metrics.quality_score || 0,
+    riskLevel: insights.author_metrics[dev.username]?.quality_metrics.low_risk_score || 0
+  })) || [];
+
+  useEffect(() => {
+    const fetchContributorMetrics = async () => {
+      try {
+        const response = await fetch(`${API_URL}/repos/${insights.owner}/${insights.repo}/contributors/metrics`, {
+          headers: {
+            'X-GitHub-Token': insights.token,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch contributor metrics');
+        }
+
+        const data = await response.json();
+        setContributorMetrics(data);
+      } catch (error) {
+        console.error('Error fetching contributor metrics:', error);
+      }
+    };
+
+    fetchContributorMetrics();
+  }, [insights]);
+
+  const [contributorMetrics, setContributorMetrics] = useState<Record<string, any>>({});
+
   // Format date for display
   const formatDate = (dateString: string) => {
     try {
@@ -1293,7 +1329,69 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
             </CardHeader>
             <CardContent>
               <div className="text-center py-12">
-                <p className="text-gray-600 dark:text-gray-400">Developer performance metrics will be displayed here</p>
+                {developerMetrics.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {developerMetrics.map((dev, index) => (
+                      <Card key={index} className="bg-gradient-card shadow-card">
+                        <CardHeader>
+                          <CardTitle className="text-black dark:text-black">{dev.username}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p>Total Commits: {dev.totalCommits}</p>
+                          <p>Lines Added: {dev.linesAdded}</p>
+                          <p>Lines Removed: {dev.linesRemoved}</p>
+                          <p>Quality Score: {dev.qualityScore}%</p>
+                          <p>Risk Level: {dev.riskLevel}%</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-600 dark:text-gray-400">No developer metrics available.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Detailed Developer Evaluation Card */}
+          <Card className="bg-gradient-card shadow-card mt-6">
+            <CardHeader>
+              <CardTitle className="text-black dark:text-black">Detailed Developer Evaluation</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-12">
+                {developerMetrics.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {developerMetrics.map((dev, index) => (
+                      <Card key={index} className="bg-gradient-card shadow-card">
+                        <CardHeader>
+                          <CardTitle className="text-black dark:text-black">{dev.username}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p>Overall Score: {contributorMetrics[dev.username]?.overall_score || 'N/A'}</p>
+                          <p>Productivity: {contributorMetrics[dev.username]?.productivity || 'N/A'}</p>
+                          <p>Innovation: {contributorMetrics[dev.username]?.innovation || 'N/A'}</p>
+                          <p>Performance: {contributorMetrics[dev.username]?.performance || 'N/A'}</p>
+                          <p>Documentation: {contributorMetrics[dev.username]?.documentation || 'N/A'}</p>
+                          <p>Code Quality: {contributorMetrics[dev.username]?.code_quality || 'N/A'}</p>
+                          <p>Reliability: {contributorMetrics[dev.username]?.reliability || 'N/A'}</p>
+                          <p>Security: {contributorMetrics[dev.username]?.security || 'N/A'}</p>
+                          <p>Collaboration: {contributorMetrics[dev.username]?.collaboration || 'N/A'}</p>
+                          <p>Maintainability: {contributorMetrics[dev.username]?.maintainability || 'N/A'}</p>
+                          <p>Testing: {contributorMetrics[dev.username]?.testing || 'N/A'}</p>
+                          <p>Lines per Commit: {contributorMetrics[dev.username]?.performance_breakdown?.lines_per_commit || 'N/A'}</p>
+                          <p>Commit Frequency: {contributorMetrics[dev.username]?.performance_breakdown?.commit_frequency || 'N/A'}</p>
+                          <p>Bug Fix Ratio: {contributorMetrics[dev.username]?.performance_breakdown?.bug_fix_ratio || 'N/A'}</p>
+                          <p>Feature Complexity: {contributorMetrics[dev.username]?.performance_breakdown?.feature_complexity || 'N/A'}</p>
+                          <p>Code Reusability: {contributorMetrics[dev.username]?.performance_breakdown?.code_reusability || 'N/A'}</p>
+                          <p>Error Handling: {contributorMetrics[dev.username]?.performance_breakdown?.error_handling || 'N/A'}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-600 dark:text-gray-400">No developer metrics available.</p>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -1023,6 +1023,8 @@ async def get_commit_details(
             detail=f"Error fetching commit details: {error_detail}"
         )
 
+########################################################################## detailed commit info ##########################################################################
+
 @app.get("/repos/{owner}/{repo}/detailed-commit-info")
 async def get_detailed_commit_info(
     owner: str,
@@ -1188,10 +1190,32 @@ def evaluate_risk(commit: Dict[str, Any]) -> str:
 
 
 def score_documentation(commit: Dict[str, Any]) -> float:
-    message = commit.get("message", "")
-    if "docs" in message or "documentation" in message:
-        return 80.0
-    return 50.0
+    """
+    Score documentation quality for a commit based on the overall repository’s documentation status.
+    Expects commit to have a 'repo_files' key listing all files in the repository (relative paths).
+    """
+    score = 50
+    repo_files = commit.get("repo_files", [])
+    repo_files_lower = [f.lower() for f in repo_files]
+
+    # Key documentation files
+    if any(f in repo_files_lower for f in ["readme.md", "readme.rst"]):
+        score += 30
+    if any(f in repo_files_lower for f in ["contributing.md", "code_of_conduct.md"]):
+        score += 20
+    if any(f.startswith("docs/") or f == "docs" for f in repo_files_lower):
+        score += 20
+    if "changelog.md" in repo_files_lower:
+        score += 10
+    if "license" in repo_files_lower or "license.md" in repo_files_lower or "license.txt" in repo_files_lower:
+        score += 10
+
+    # Commit message bonus
+    message = commit.get("message", "").lower()
+    if any(word in message for word in ["docs", "documentation", "readme"]):
+        score += 10
+
+    return float(min(100, score))
 
 
 def identify_file_types(commit: Dict[str, Any]) -> List[str]:
@@ -1303,3 +1327,252 @@ def calculate_commit_specific_scores(commit: Dict[str, Any]) -> Dict[str, float]
         "testing": min(max(testing, 0), 100),
         "documentation": min(max(documentation, 0), 100),
     }
+
+########################################################################## contributors metrics (not working yet) ##########################################################################
+
+
+def calculate_overall_score(metrics):
+    return sum(metrics.values()) / len(metrics)
+
+
+def calculate_productivity(commits):
+    score = 50
+    total_commits = len(commits)
+    score += 10 * (1 if total_commits > 0 else 0)
+    print(f"Productivity score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_code_quality(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        additions = commit.get('additions', 0)
+        deletions = commit.get('deletions', 0)
+        if any(keyword in message for keyword in ["wip", "temp", "quick fix"]):
+            score -= 10
+        if any(message.startswith(prefix) for prefix in ["feat:", "fix:", "refactor:", "docs:"]):
+            score += 10
+        if deletions > additions:
+            score += 10
+    print (f"Code quality score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_collaboration(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        if "co-authored-by:" in message:
+            score += 10
+        if "@" in message:
+            score += 5
+    print (f"Collaboration score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_innovation(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        files = commit.get('files', [])
+        if any(file.get('status') == 'added' for file in files):
+            score += 10
+        if any(keyword in message for keyword in ["add", "introduce", "new feature"]):
+            score += 5
+    print (f"Innovation score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_reliability(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        files = commit.get('files', [])
+        if "revert:" in message:
+            score -= 10
+        if any(file.get('status') == 'modified' for file in files):
+            score -= 10
+        if "fix:" in message:
+            score += 5
+    print (f"Reliability score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_maintainability(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        files = commit.get('files', [])
+        additions = commit.get('additions', 0)
+        deletions = commit.get('deletions', 0)
+        if any(keyword in message for keyword in ["refactor", "cleanup", "remove unused"]):
+            score += 10
+        if additions + deletions > 500 and not any("test" in file.get('filename', '') for file in files):
+            score -= 10
+    print (f"Maintainability score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_performance(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        files = commit.get('files', [])
+        if any(keyword in message for keyword in ["optimize", "improve performance"]):
+            score += 10
+        if any(directory in files.get('filename', '') for directory in ["/core/", "/engine/", "/performance/"]):
+            score += 5
+    print (f"Performance score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_security(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        files = commit.get('files', [])
+        if any(keyword in message for keyword in ["auth", "encrypt", "xss", "cve"]):
+            score += 10
+        if any(files.get('filename', '').endswith(suffix) for suffix in [".env", "secrets", "config"]):
+            score -= 15
+    print (f"Security score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_testing(commits):
+    score = 50
+    for commit in commits:
+        files = commit.get('files', [])
+        additions = commit.get('additions', 0)
+        deletions = commit.get('deletions', 0)
+        if any("test" in file.get('filename', '') for file in files):
+            score += 15
+        if additions + deletions > 500 and not any("test" in file.get('filename', '') for file in files):
+            score -= 15
+    print (f"Testing score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_documentation(commits):
+    score = 50
+    for commit in commits:
+        files = commit.get('files', [])
+        if any(files.get('filename', '').endswith(suffix) for suffix in ["README.md", "docs/"]):
+            score += 15
+    print (f"Documentation score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_feature_complexity(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        files = commit.get('files', [])
+        additions = commit.get('additions', 0)
+        if additions > 1000 or len(files) > 10:
+            score += 10
+        if any(file.get('status') == 'added' for file in files):
+            score += 5
+        if "typo" in message:
+            score -= 10
+    print (f"Feature complexity score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_code_reusability(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        files = commit.get('files', [])
+        if any(directory in files.get('filename', '') for directory in ["utils/", "helpers/", "common/"]):
+            score += 10
+        if any("duplication" in message for file in files):
+            score -= 10
+    print (f"Code reusability score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+def calculate_error_handling(commits):
+    score = 50
+    for commit in commits:
+        message = commit.get('message', '').lower()
+        if any(keyword in message for keyword in ["try/catch", "error handling", "logging"]):
+            score += 10
+        if any(keyword in message for keyword in ["remove error handling"]):
+            score -= 10
+    print (f"Error handling score: {max(0, min(100, score))}")
+    return max(0, min(100, score))
+
+
+@app.get("/repos/{owner}/{repo}/contributors/metrics")
+async def get_contributors_metrics(
+    owner: str,
+    repo: str,
+    x_github_token: Optional[str] = Header(default=None),
+    token: Optional[str] = Query(default=None),
+):
+    """
+    Fetch commit data from all branches for all contributors and rate them on specified metrics.
+    """
+    pat = resolve_token(x_github_token, token)
+    print (f"pat: {pat}")
+    try:
+        branches = github_client.fetch_all_branches(pat, owner, repo)
+        if not branches:
+            raise HTTPException(status_code=404, detail="No branches found")
+
+        # Aggregate commits by author
+        contributors_commits = {}
+        for branch in branches:
+            commits = github_client.fetch_all_commits_for_branch(pat, owner, repo, branch['name'])
+            if not commits:
+                continue
+
+            for commit in commits:
+                author = commit.get("author_login") or commit.get("committer_login") or "unknown"
+                if author not in contributors_commits:
+                    contributors_commits[author] = []
+                contributors_commits[author].append(commit)
+
+        # Calculate metrics for each author
+        contributors_metrics = {}
+        for author, commits in contributors_commits.items():
+            contributors_metrics[author] = {
+                "productivity": calculate_productivity(commits),
+                "code_quality": calculate_code_quality(commits),
+                "collaboration": calculate_collaboration(commits),
+                "innovation": calculate_innovation(commits),
+                "reliability": calculate_reliability(commits),
+                "maintainability": calculate_maintainability(commits),
+                "performance": calculate_performance(commits),
+                "security": calculate_security(commits),
+                "testing": calculate_testing(commits),
+                "documentation": calculate_documentation(commits),
+                "performance_breakdown": {
+                    "lines_per_commit": 0,  # To be calculated
+                    "commit_frequency": 0,  # To be calculated
+                    "bug_fix_ratio": 0,  # To be calculated
+                    "feature_complexity": calculate_feature_complexity(commits),
+                    "code_reusability": calculate_code_reusability(commits),
+                    "error_handling": calculate_error_handling(commits),
+                }
+            }
+
+            # Example calculation for lines per commit
+            # contributors_metrics[author]["performance_breakdown"]["lines_per_commit"] = sum(commit.get("additions", 0) + commit.get("deletions", 0) for commit in commits) / len(commits)
+
+        # Calculate commit frequency and bug fix ratio
+        # for author, metrics in contributors_metrics.items():
+        #     total_commits = len(contributors_commits[author])
+        #     if total_commits > 0:
+        #         metrics["performance_breakdown"]["commit_frequency"] = total_commits / len(branches)
+        #         metrics["performance_breakdown"]["bug_fix_ratio"] = sum(1 for c in contributors_commits[author] if "fix" in (c.get("message") or "").lower()) / total_commits
+
+        return contributors_metrics
+
+    except Exception as e:
+        error_detail = str(e)
+        if hasattr(e, "response") and e.response is not None:
+            error_detail = e.response.text
+        raise HTTPException(status_code=500, detail=f"Error fetching contributors metrics: {error_detail}")
