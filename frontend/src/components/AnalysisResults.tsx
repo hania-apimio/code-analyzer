@@ -42,6 +42,17 @@ const getRiskLevel = (totalChanges: number, filesChanged: number): string => {
   return 'Low';
 };
 
+const getMetricOptions = () => [
+  { value: "commits", label: "Commits Count" },
+  { value: "linesAdded", label: "Lines Added" },
+  { value: "linesRemoved", label: "Lines Removed" },
+  { value: "filesChanged", label: "Files Changed" },
+  { value: "avgCommitSize", label: "Average Commit Size" },
+  { value: "qualityScore", label: "Quality Score %" },
+  { value: "complexityScore", label: "Complexity Score %" },
+  { value: "riskScore", label: "Risk Score %" },
+];
+
 const getCommitAnalysisText = (commitData: any, latestCommit: any, selectedAuthor: string) => {
   const author = commitData.author_name || commitData.author_login || selectedAuthor;
   const message = commitData.message;
@@ -1320,83 +1331,246 @@ export function AnalysisResults({ insights }: AnalysisResultsProps) {
 
         {/* Developer Performance Tab */}
         <TabsContent value="developer" className="space-y-6">
+          {/* Card 1: Developer Performance Comparison */}
           <Card className="bg-gradient-card shadow-card">
             <CardHeader>
-              <CardTitle className="text-black dark:text-black">Developer Performance Analysis</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Detailed performance metrics for each developer
-              </p>
+              <CardTitle className="flex items-center gap-2 text-black dark:text-black">
+                <Users className="w-5 h-5 text-primary" />
+                Developer Performance Comparison
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-center py-12">
-                {developerMetrics.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {developerMetrics.map((dev, index) => (
-                      <Card key={index} className="bg-gradient-card shadow-card">
-                        <CardHeader>
-                          <CardTitle className="text-black dark:text-black">{dev.username}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p>Total Commits: {dev.totalCommits}</p>
-                          <p>Lines Added: {dev.linesAdded}</p>
-                          <p>Lines Removed: {dev.linesRemoved}</p>
-                          <p>Quality Score: {dev.qualityScore}%</p>
-                          <p>Risk Level: {dev.riskLevel}%</p>
-                        </CardContent>
-                      </Card>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">View Type</label>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select view" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="overview">Daily View</SelectItem>
+                      <SelectItem value="detailed">Weekly View</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Metric</label>
+                  <Select>
+                  <SelectTrigger>
+                      <SelectValue placeholder="Select Metric" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getMetricOptions().map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Chart Type</label>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Chart Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bar">Bar Chart</SelectItem>
+                      <SelectItem value="line">Line Chart</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Filter by Author</label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Authors" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {insights?.by_developer?.map((dev) => (
+                      <SelectItem key={dev.username} value={dev.username}>
+                        {dev.username}
+                      </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <h4 className="font-medium mb-2">Time Range Filter</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Start Date</label>
+                    <input
+                      type="date"
+                      className="w-full p-2 border rounded"
+                    />
                   </div>
-                ) : (
-                  <p className="text-gray-600 dark:text-gray-400">No developer metrics available.</p>
-                )}
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">End Date</label>
+                    <input
+                      type="date"
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm">Last 7 days</Button>
+                  <Button variant="outline" size="sm">Last 30 days</Button>
+                  <Button variant="outline" size="sm">Clear Filter</Button>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-medium mb-2">Compare Developers</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Developer 1" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {insights?.by_developer?.map((dev) => (
+                        <SelectItem key={`dev1-${dev.username}`} value={dev.username}>
+                          {dev.username}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Developer 2" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {insights?.by_developer?.map((dev) => (
+                        <SelectItem key={`dev2-${dev.username}`} value={dev.username}>
+                          {dev.username}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Detailed Developer Evaluation Card */}
-          <Card className="bg-gradient-card shadow-card mt-6">
+          {/* Card 2: Developer Metrics Comparison */}
+          <Card className="bg-gradient-card shadow-card">
             <CardHeader>
-              <CardTitle className="text-black dark:text-black">Detailed Developer Evaluation</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-black dark:text-black">
+                <BarChart2 className="w-5 h-5 text-primary" />
+                Developer Metrics Comparison
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-12">
-                {developerMetrics.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {developerMetrics.map((dev, index) => (
-                      <Card key={index} className="bg-gradient-card shadow-card">
-                        <CardHeader>
-                          <CardTitle className="text-black dark:text-black">{dev.username}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p>Overall Score: {contributorMetrics[dev.username]?.overall_score || 'N/A'}</p>
-                          <p>Productivity: {contributorMetrics[dev.username]?.productivity || 'N/A'}</p>
-                          <p>Innovation: {contributorMetrics[dev.username]?.innovation || 'N/A'}</p>
-                          <p>Performance: {contributorMetrics[dev.username]?.performance || 'N/A'}</p>
-                          <p>Documentation: {contributorMetrics[dev.username]?.documentation || 'N/A'}</p>
-                          <p>Code Quality: {contributorMetrics[dev.username]?.code_quality || 'N/A'}</p>
-                          <p>Reliability: {contributorMetrics[dev.username]?.reliability || 'N/A'}</p>
-                          <p>Security: {contributorMetrics[dev.username]?.security || 'N/A'}</p>
-                          <p>Collaboration: {contributorMetrics[dev.username]?.collaboration || 'N/A'}</p>
-                          <p>Maintainability: {contributorMetrics[dev.username]?.maintainability || 'N/A'}</p>
-                          <p>Testing: {contributorMetrics[dev.username]?.testing || 'N/A'}</p>
-                          <p>Lines per Commit: {contributorMetrics[dev.username]?.performance_breakdown?.lines_per_commit || 'N/A'}</p>
-                          <p>Commit Frequency: {contributorMetrics[dev.username]?.performance_breakdown?.commit_frequency || 'N/A'}</p>
-                          <p>Bug Fix Ratio: {contributorMetrics[dev.username]?.performance_breakdown?.bug_fix_ratio || 'N/A'}</p>
-                          <p>Feature Complexity: {contributorMetrics[dev.username]?.performance_breakdown?.feature_complexity || 'N/A'}</p>
-                          <p>Code Reusability: {contributorMetrics[dev.username]?.performance_breakdown?.code_reusability || 'N/A'}</p>
-                          <p>Error Handling: {contributorMetrics[dev.username]?.performance_breakdown?.error_handling || 'N/A'}</p>
-                        </CardContent>
-                      </Card>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-3">Developer</th>
+                      <th className="text-right p-3">Total Commits</th>
+                      <th className="text-right p-3">Lines Added</th>
+                      <th className="text-right p-3">Lines Removed</th>
+                      <th className="text-right p-3">Avg. Commit Size</th>
+                      <th className="text-right p-3">Quality Score</th>
+                      <th className="text-right p-3">Risk Level</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(insights?.author_metrics || {}).map(([author, metrics]) => (
+                      <tr key={author} className="border-b hover:bg-muted/50">
+                        <td className="p-3">{author}</td>
+                        <td className="text-right p-3">{metrics.total_commits}</td>
+                        <td className="text-right p-3 text-green-600 dark:text-green-400">
+                          +{metrics.lines_added}
+                        </td>
+                        <td className="text-right p-3 text-red-600 dark:text-red-400">
+                          -{metrics.lines_removed}
+                        </td>
+                        <td className="text-right p-3">
+                          {Math.round((metrics.lines_added + metrics.lines_removed) / metrics.total_commits)}
+                        </td>
+                        <td className="text-right p-3">
+                          {metrics.quality_metrics.quality_score}%
+                        </td>
+                        <td className="text-right p-3">
+                          <Badge>
+                            {metrics.quality_metrics.low_risk_score < 60
+                              ? "High"
+                              : metrics.quality_metrics.low_risk_score < 80
+                              ? "Medium"
+                              : "Low"}
+                          </Badge>
+                        </td>
+                      </tr>
                     ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-600 dark:text-gray-400">No developer metrics available.</p>
-                )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+        {/* Detailed Developer Evaluation Card */}
+        <Card className="bg-gradient-card shadow-card mt-6">
+          <CardHeader>
+            <CardTitle className="text-black dark:text-black">Detailed Developer Evaluation</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-12">
+              {developerMetrics.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {developerMetrics.map((dev, index) => (
+                    <Card key={index} className="bg-gradient-card shadow-card">
+                      <CardHeader>
+                        <CardTitle className="text-black dark:text-black">{dev.username}</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p>Overall Score: {contributorMetrics[dev.username]?.overall_score || 'N/A'}</p>
+                        <p>Productivity: {contributorMetrics[dev.username]?.productivity || 'N/A'}</p>
+                        <p>Innovation: {contributorMetrics[dev.username]?.innovation || 'N/A'}</p>
+                        <p>Performance: {contributorMetrics[dev.username]?.performance || 'N/A'}</p>
+                        <p>Documentation: {contributorMetrics[dev.username]?.documentation || 'N/A'}</p>
+                        <p>Code Quality: {contributorMetrics[dev.username]?.code_quality || 'N/A'}</p>
+                        <p>Reliability: {contributorMetrics[dev.username]?.reliability || 'N/A'}</p>
+                        <p>Security: {contributorMetrics[dev.username]?.security || 'N/A'}</p>
+                        <p>Collaboration: {contributorMetrics[dev.username]?.collaboration || 'N/A'}</p>
+                        <p>Maintainability: {contributorMetrics[dev.username]?.maintainability || 'N/A'}</p>
+                        <p>Testing: {contributorMetrics[dev.username]?.testing || 'N/A'}</p>
+                        <p>Lines per Commit: {contributorMetrics[dev.username]?.performance_breakdown?.lines_per_commit || 'N/A'}</p>
+                        <p>Commit Frequency: {contributorMetrics[dev.username]?.performance_breakdown?.commit_frequency || 'N/A'}</p>
+                        <p>Bug Fix Ratio: {contributorMetrics[dev.username]?.performance_breakdown?.bug_fix_ratio || 'N/A'}</p>
+                        <p>Feature Complexity: {contributorMetrics[dev.username]?.performance_breakdown?.feature_complexity || 'N/A'}</p>
+                        <p>Code Reusability: {contributorMetrics[dev.username]?.performance_breakdown?.code_reusability || 'N/A'}</p>
+                        <p>Error Handling: {contributorMetrics[dev.username]?.performance_breakdown?.error_handling || 'N/A'}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-600 dark:text-gray-400">No developer metrics available.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+          {/* Card 4: Weekly Performance Trends */}
+          <Card className="bg-gradient-card shadow-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-black dark:text-black">
+                <Calendar className="w-5 h-5 text-primary" />
+                Weekly Performance Trends
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64 flex items-center justify-center bg-muted/50 rounded-lg">
+                <p className="text-muted-foreground">Performance trends chart will be displayed here</p>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
+       
         {/* Detailed Analysis Tab */}
         <TabsContent value="detailed" className="space-y-6">
           <Card className="bg-gradient-card shadow-card">
