@@ -463,6 +463,7 @@ const CommitCard = ({ commit }) => {
                 <GitBranch className="w-3 h-3 mr-1" />
                 {commit.branch || "main"}
               </Badge>
+              
 
               {/* Risk */}
               <Badge
@@ -578,6 +579,14 @@ const CommitCard = ({ commit }) => {
                     commit.lines_removed,
                     commit.filesChanged
                   )}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  Category: {determineSSMCategory({
+                    message: commit.commit_message || '',
+                    linesAdded: commit.lines_added || 0,
+                    linesRemoved: commit.lines_removed || 0,
+                    filesChanged: commit.files_changed.length || 0
+                  })}
                 </Badge>
               </div>
             </div>
